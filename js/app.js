@@ -62,7 +62,11 @@
     trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
     clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
     award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 12.9 17 22l-5-3-5 3 1.5-9.1"/>',
-    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>'
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+    flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+    shield: '<path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.7 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.5 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/>',
+    star: '<path d="M11.5 2.3a.5.5 0 0 1 1 0l2.3 4.7a2 2 0 0 0 1.5 1.1l5.2.8a.5.5 0 0 1 .3.9l-3.8 3.7a2 2 0 0 0-.6 1.8l.9 5.2a.5.5 0 0 1-.8.6l-4.6-2.5a2 2 0 0 0-1.9 0l-4.6 2.5a.5.5 0 0 1-.8-.6l.9-5.2a2 2 0 0 0-.6-1.8L1.6 9.8a.5.5 0 0 1 .3-.9l5.2-.8a2 2 0 0 0 1.5-1.1z"/>',
+    teacher: '<path d="M2 3h20M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3M7 21l5-5 5 5"/>'
   };
   function icon(name, cls) {
     return '<span class="ic ' + (cls || '') + '" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg></span>';
@@ -96,13 +100,16 @@
   function fresh() {
     return {
       tutorialVisto: false,
-      ajustes: { texto: 0, contraste: false, velocidad: 1, vista: '3d' },
+      ajustes: { texto: 0, contraste: false, velocidad: 1, vista: '3d', docente: false },
       explorados: {},      // { probeta: { tabs: ['caracteristicas','uso'], hecho: true } }
       ultima: null,        // última ficha abierta
       diag: null,          // { respuestas: [...], fecha }
       mini: {},            // { '2': { intentos: [ { aciertos, respuestas, fecha } ] } }
       semaforo: {},        // { '2': 'claro' | 'dudas' | 'repasar' }
-      actividades: {}      // { 'cada-cosa': {...}, 'quien-soy': {...}, 'parecidos': {...} }
+      actividades: {},     // { 'cada-cosa': {...}, 'quien-soy-3': {...}, 'parecidos': {...} }
+      lecciones: {},       // módulo 1: { laboratorio: true, materiales: true, visor: true }
+      retoFinal: null,     // { respuestas: [...], fecha }
+      explicalo: null      // { instrumento, formato, texto, fecha }
     };
   }
   function load() {
@@ -140,16 +147,24 @@
   function isDone(id) { return !!(S.explorados[id] && S.explorados[id].hecho); }
   function opened(id) { return !!S.explorados[id]; }
   function modProgress(m) {
-    var done = m.instrumentos.filter(isDone).length;
-    return { done: done, total: m.instrumentos.length, all: m.instrumentos.length > 0 && done === m.instrumentos.length };
+    var lista = m.lecciones || m.instrumentos;
+    var hecho = m.lecciones ? function (id) { return !!S.lecciones[id]; } : isDone;
+    var done = lista.filter(hecho).length;
+    return { done: done, total: lista.length, all: lista.length > 0 && done === lista.length, unidad: m.lecciones ? 'lecciones' : 'instrumentos' };
   }
+  function miniAbierto(mid) { return S.ajustes.docente || modProgress(modulo(mid)).all; }
+  function todoExplorado() { return D.MODULOS.every(function (m) { return modProgress(m).all; }); }
+  function retoAbierto() { return S.ajustes.docente || todoExplorado(); }
+  // Clave de registro de cada actividad por módulo (el módulo 2 conserva la clave del primer avance)
+  function actKey(aid, mid) { return Number(mid) === 2 ? aid : aid + '-' + mid; }
+  function actData(aid, mid) { return S.actividades[actKey(aid, mid)] || null; }
   function totalExplored() { return Object.keys(D.INSTRUMENTOS).filter(isDone).length; }
   function miniData(id) { return S.mini[id] || null; }
   function hasBadge(mid) {
     var m = miniData(mid);
     return !!(m && m.intentos.some(function (i) { return i.aciertos >= D.MINIRETOS[mid].minimo; }));
   }
-  function badgeCount() { return D.MODULOS.filter(function (m) { return D.MINIRETOS[m.id] && hasBadge(m.id); }).length; }
+  function badgeCount() { return D.MODULOS.filter(function (m) { return D.MINIRETOS[m.id] && hasBadge(m.id); }).length + (S.retoFinal ? 1 : 0); }
 
   /* =========================================================
    * Lectura en voz alta
@@ -206,13 +221,16 @@
     },
     moduleAssets: function (mid) {
       var m = modulo(mid), list = [];
-      m.instrumentos.forEach(function (id) {
+      var ids = m.lecciones ? [D.LECCIONES.visor.instrumento] : m.instrumentos;
+      ids.forEach(function (id) {
         var it = inst(id);
         if (!it.modelo) return;
         list.push(it.modelo, it.imagen);
         for (var k = 0; k < 8; k++) list.push(it.vistas + '-' + k + '.webp');
       });
-      if (mid === 2) list.push('recursos/Orbita_Ficha_Modulo_2.pdf');
+      // El módulo 1 muestra ejemplos de todos los instrumentos en sus lecciones
+      if (m.lecciones) Object.keys(D.INSTRUMENTOS).forEach(function (id) { var im = D.INSTRUMENTOS[id].imagen; if (list.indexOf(im) < 0) list.push(im); });
+      list.push('recursos/Orbita_Ficha_Modulo_' + mid + '.pdf');
       return list;
     },
     moduleStatus: function (mid) {
@@ -309,7 +327,7 @@
     var body = mode3d
       ? '<model-viewer src="' + modelSrc(it) + '" poster="' + it.imagen + '" alt="Modelo 3D de ' + esc(o.anon ? 'un instrumento sin nombre' : it.nombre) + '" camera-controls touch-action="pan-y" ' +
         'auto-rotate auto-rotate-delay="2500" rotation-per-second="18deg" interaction-prompt="none" shadow-intensity="0.7" exposure="1.05" environment-image="neutral" ' +
-        'camera-orbit="20deg 75deg auto" loading="eager">' + hot + '</model-viewer>'
+        'camera-orbit="' + (it.camara || '20deg 75deg auto') + '" loading="eager">' + hot + '</model-viewer>'
       : altHTML(it, o.anon);
     var side = o.controls === false ? '' :
       '<div class="side">' +
@@ -345,13 +363,18 @@
         var c = mv.getCameraOrbit();
         mv.cameraOrbit = c.theta + 'rad ' + c.phi + 'rad ' + (c.radius * f) + 'm';
         hideHint();
+        if (o.onZoom && f < 1) o.onZoom();
       };
       $$('[data-v]', card).forEach(function (b) {
         var v = b.getAttribute('data-v');
         if (v === 'spin') b.onclick = function () { mv.autoRotate = !mv.autoRotate; b.setAttribute('aria-pressed', mv.autoRotate ? 'true' : 'false'); };
         if (v === 'in') b.onclick = function () { zoom(0.75); };
         if (v === 'out') b.onclick = function () { zoom(1.3); };
-        if (v === 'reset') b.onclick = function () { mv.cameraOrbit = '20deg 75deg auto'; mv.cameraTarget = 'auto auto auto'; mv.fieldOfView = 'auto'; };
+        if (v === 'reset') b.onclick = function () { mv.cameraOrbit = it.camara || '20deg 75deg auto'; mv.cameraTarget = 'auto auto auto'; mv.fieldOfView = 'auto'; };
+      });
+      mv.addEventListener('camera-change', function (e) {
+        if (!o.onCamera || !e.detail || e.detail.source !== 'user-interaction') return;
+        o.onCamera(mv.getCameraOrbit());
       });
       $$('.hotspot', card).forEach(function (h) {
         h.addEventListener('click', function () { if (o.onPart) o.onPart(Number(h.getAttribute('data-part'))); });
@@ -361,7 +384,7 @@
         swapToPhotos(card, it, o);
       });
     } else {
-      mountAlt(card);
+      mountAlt(card, o.onAlt);
     }
     var modeBtn = $('[data-v="mode"]', card);
     if (modeBtn) modeBtn.onclick = function () {
@@ -376,7 +399,7 @@
     mountViewer(nc, it, o);
   }
   function swapToPhotos(card, it, o) { swapViewer(card, it, o, 'fotos'); }
-  function mountAlt(card) {
+  function mountAlt(card, onAlt) {
     var box = $('.alt-view', card); if (!box) return;
     var img = $('img', box), range = $('input', box), base = img.getAttribute('src').replace(/-0\.webp$/, '');
     for (var k = 1; k < 8; k++) { var p = new Image(); p.src = base + '-' + k + '.webp'; }
@@ -384,6 +407,7 @@
       k = (k + 8) % 8; range.value = k; img.src = base + '-' + k + '.webp';
       img.alt = img.alt.replace(/vista \d de 8/, 'vista ' + (k + 1) + ' de 8');
       range.setAttribute('aria-valuetext', 'Vista ' + (k + 1) + ' de 8');
+      if (onAlt) onAlt(k);
     };
     range.addEventListener('input', function () { set(Number(range.value)); });
     var sx = null;
@@ -422,8 +446,15 @@
     [/^\/laboratorio$/, viewLaboratorio],
     [/^\/actividades$/, viewActividades],
     [/^\/actividad\/explora$/, viewExplora],
-    [/^\/actividad\/quien-soy$/, viewQuienSoy],
-    [/^\/actividad\/cada-cosa$/, viewCadaCosa],
+    [/^\/leccion\/([\w-]+)$/, viewLeccion],
+    [/^\/actividad\/quien-soy$/, function () { return viewElegirModulo('quien-soy'); }],
+    [/^\/actividad\/quien-soy\/(\d)$/, viewQuienSoy],
+    [/^\/actividad\/cada-cosa$/, function () { return viewElegirModulo('cada-cosa'); }],
+    [/^\/actividad\/cada-cosa\/(\d)$/, viewCadaCosa],
+    [/^\/actividad\/mesa$/, viewRetoFinal],
+    [/^\/reto-final\/resultado$/, viewRetoResultado],
+    [/^\/actividad\/explicalo$/, viewExplicalo],
+    [/^\/docente$/, viewDocente],
     [/^\/actividad\/parecidos$/, viewParecidos],
     [/^\/actividad\/parecidos\/([\w-]+)$/, viewPareja],
     [/^\/evaluacion$/, viewEvaluacion],
@@ -528,28 +559,43 @@
 
   /* 2 · Menú principal */
   function viewMenu() {
-    var last = S.ultima && inst(S.ultima);
-    var lastMod = last ? last.modulo : 2;
-    if (!last) last = inst(modulo(2).instrumentos.filter(function (id) { return !isDone(id); })[0] || 'vaso');
-    var pct = Math.round(totalExplored() / Object.keys(D.INSTRUMENTOS).length * 100);
+    // Dónde seguir: la última ficha abierta o lo primero que falte por explorar
+    var cont = null;
+    if (S.ultima && inst(S.ultima)) {
+      var u = inst(S.ultima);
+      cont = { go: '/ficha/' + u.id, img: u.imagen, small: 'Continuar donde quedaste', nombre: u.nombre, mod: u.modulo };
+    } else {
+      var m1 = modulo(1);
+      var lec = m1.lecciones.filter(function (l) { return !S.lecciones[l]; })[0];
+      if (lec) cont = { go: '/leccion/' + lec, icon: D.LECCIONES[lec].icono, small: 'Empieza por', nombre: D.LECCIONES[lec].titulo, mod: 1 };
+      else {
+        var pend = null;
+        D.MODULOS.some(function (m) { pend = m.instrumentos.filter(function (id) { return !isDone(id); })[0]; return !!pend; });
+        pend = inst(pend || 'vaso');
+        cont = { go: '/ficha/' + pend.id, img: pend.imagen, small: 'Sigue con', nombre: pend.nombre, mod: pend.modulo };
+      }
+    }
+    var totalU = D.MODULOS.reduce(function (a, m) { return a + modProgress(m).total; }, 0);
+    var doneU = D.MODULOS.reduce(function (a, m) { return a + modProgress(m).done; }, 0);
+    var pct = Math.round(doneU / totalU * 100);
     var tiles = [
       ['/modulos', 'layers', 'c-primary', 'Módulos', '4 módulos'],
       ['/laboratorio', 'flask', 'c-teal', 'Laboratorio 3D', '18 instrumentos'],
-      ['/actividades', 'puzzle', 'c-orange', 'Actividades', '5 actividades'],
+      ['/actividades', 'puzzle', 'c-orange', 'Actividades', D.ACTIVIDADES.length + ' actividades'],
       ['/evaluacion', 'clipboard', 'c-violet', 'Evaluación', 'Mini-retos y reto final'],
       ['/logros', 'trophy', 'c-amber', 'Mis logros', badgeCount() === 1 ? '1 insignia' : badgeCount() + ' insignias'],
       ['/recursos', 'book', 'c-slate', 'Recursos', 'Fichas y glosario']
     ];
     return {
       kind: 'home', title: 'Menú principal', navKey: 'inicio',
-      speak: function () { return '¡Hola! ¿Qué quieres explorar hoy? Puedes continuar con ' + last.nombre + ', o entrar a módulos, laboratorio 3D, actividades, evaluación, mis logros o recursos.'; },
+      speak: function () { return '¡Hola! ¿Qué quieres explorar hoy? Puedes continuar con ' + cont.nombre + ', o entrar a módulos, laboratorio 3D, actividades, evaluación, mis logros o recursos.'; },
       html:
         '<h1 class="h1">¡Hola! ¿Qué quieres<br>explorar hoy?</h1>' +
         '<section class="progress-card" aria-label="Tu avance">' +
-        '<div class="row between"><span>Tu avance</span><span>Módulo ' + lastMod + ' de 4</span></div>' +
-        '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Instrumentos explorados"><i style="width:' + Math.max(pct, 3) + '%"></i></div>' +
-        '<button class="continue" data-go="/ficha/' + last.id + '"><span class="thumb"><img src="' + last.imagen + '" alt=""></span>' +
-        '<span><small>' + (S.ultima ? 'Continuar donde quedaste' : 'Empieza por') + '</small><strong>' + esc(last.nombre) + '</strong></span>' +
+        '<div class="row between"><span>Tu avance</span><span>Módulo ' + cont.mod + ' de 4</span></div>' +
+        '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Avance en los módulos"><i style="width:' + Math.max(pct, 3) + '%"></i></div>' +
+        '<button class="continue" data-go="' + cont.go + '"><span class="thumb">' + (cont.img ? '<img src="' + cont.img + '" alt="">' : icon(cont.icon)) + '</span>' +
+        '<span><small>' + cont.small + '</small><strong>' + esc(cont.nombre) + '</strong></span>' +
         '<span class="go">' + icon('next') + '</span></button>' +
         '</section>' +
         '<nav class="tiles" aria-label="Secciones">' + tiles.map(function (t) {
@@ -563,63 +609,77 @@
   /* 3 · Lista de módulos */
   function viewModulos() {
     var colors = ['c-primary', 'c-teal', 'c-orange', 'c-violet'];
+    var abierto = retoAbierto();
     return {
       title: 'Módulos', eyebrow: 'Orden sugerido · 5 semanas', back: '/menu', navKey: 'modulos',
       html:
-        '<p class="lead">El orden es sugerido: puedes entrar a cualquier módulo. Dentro de cada uno, el mini-reto se activa cuando exploras todas las fichas.</p>' +
+        '<p class="lead">El orden es sugerido: puedes entrar a cualquier módulo. Dentro de cada uno, el mini-reto se activa cuando exploras todo su contenido.</p>' +
         '<div class="list">' + D.MODULOS.map(function (m, i) {
           var pr = modProgress(m);
-          var status = m.estado === 'disponible'
-            ? '<span class="chip teal">' + pr.done + ' de ' + pr.total + ' explorados</span>' + (hasBadge(m.id) ? '<span class="chip amber">' + icon('award') + esc(m.insignia) + '</span>' : '')
-            : '<span class="chip slate">' + icon('tool') + 'En construcción</span>';
+          var status = '<span class="chip teal">' + pr.done + ' de ' + pr.total + ' ' + (m.lecciones ? 'lecciones' : 'explorados') + '</span>' +
+            (hasBadge(m.id) ? '<span class="chip amber">' + icon('award') + esc(m.insignia) + '</span>' : '');
           return '<a class="card module-card" href="#/modulo/' + m.id + '"><span class="num ' + colors[i] + '">' + m.id + '</span>' +
             '<span><span class="small muted">Semana ' + m.semana + '</span><strong class="h3" style="display:block">' + esc(m.titulo) + '</strong>' +
             '<span class="meta">' + status + '</span></span></a>';
         }).join('') +
-        '<div class="card dashed module-card"><span class="num c-amber">' + icon('flask') + '</span><span><span class="small muted">Semana 5</span><strong class="h3" style="display:block">Cierre: reto final</strong>' +
-        '<span class="meta"><span class="chip slate">' + icon('lock') + 'Se activa al completar los 4 módulos</span></span></span></div>' +
+        (abierto
+          ? '<a class="card module-card" href="#/actividad/mesa"><span class="num c-amber">' + icon('flask') + '</span><span><span class="small muted">Semana 5</span><strong class="h3" style="display:block">Cierre: reto final</strong>' +
+            '<span class="meta">' + (S.retoFinal ? '<span class="chip amber">' + icon('award') + 'Reto final completado</span>' : '<span class="chip teal">' + icon('checkCircle') + 'Disponible</span>') + '</span></span></a>'
+          : '<div class="card dashed module-card"><span class="num c-amber">' + icon('flask') + '</span><span><span class="small muted">Semana 5</span><strong class="h3" style="display:block">Cierre: reto final</strong>' +
+            '<span class="meta"><span class="chip slate">' + icon('lock') + 'Se activa al completar los 4 módulos</span></span></span></div>') +
         '</div>'
     };
   }
 
   /* 4 · Vista de un módulo */
+  function actividadItem(aid, mid) {
+    var a = D.ACTIVIDADES.filter(function (x) { return x.id === aid; })[0];
+    var href = aid === 'parecidos' ? '#/actividad/parecidos' : '#/actividad/' + aid + '/' + mid;
+    var done = aid === 'parecidos' ? S.actividades.parecidos : actData(aid, mid);
+    return '<a class="item" href="' + href + '"><span class="thumb c-orange">' + icon(a.icono) + '</span><span><strong>' + esc(a.nombre) + '</strong><small>' + esc(a.resumen) + '</small></span>' +
+      (done ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a>';
+  }
+  function miniItem(m, pr) {
+    return miniAbierto(m.id)
+      ? '<a class="item" href="#/evaluacion/minireto/' + m.id + '"><span class="thumb c-violet">' + icon('clipboard') + '</span><span><strong>Mini-reto del módulo</strong><small>5 preguntas · sin límite de tiempo</small></span>' +
+        (hasBadge(m.id) ? '<span class="state done" aria-label="Logrado">' + icon('check') + '</span>' : '<span class="state viewing">Listo</span>') + '</a>'
+      : '<div class="item locked" aria-disabled="true"><span class="thumb">' + icon('lock') + '</span><span><strong>Mini-reto del módulo</strong><small>Se activa al ' + (m.lecciones ? 'completar las ' + pr.total + ' lecciones' : 'explorar los ' + pr.total + ' instrumentos') + '</small></span><span></span></div>';
+  }
+  function moduleHead(m, pr) {
+    var circ = 2 * Math.PI * 26, off = circ * (1 - (pr.total ? pr.done / pr.total : 0));
+    return '<section class="module-head"><div><h1 class="h1" style="font-size:1.3rem">' + esc(m.titulo) + '</h1><small>' +
+      (m.lecciones ? pr.total + ' lecciones · recorrido por el catálogo' : pr.total + ' instrumentos · ' + (m.actividades.length - 1) + ' actividades') + '</small></div>' +
+      '<div class="ring" role="img" aria-label="' + pr.done + ' de ' + pr.total + ' ' + pr.unidad + ' completados"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="6"/>' +
+      '<circle cx="30" cy="30" r="26" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + circ.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '"/></svg><span>' + pr.done + '/' + pr.total + '</span></div></section>' +
+      '<div class="goal">' + icon('target') + '<p><b>Al terminar podrás</b> ' + esc(m.objetivo) + '</p></div>';
+  }
   function viewModulo(id) {
     var m = modulo(id);
     if (!m) return null;
     var pr = modProgress(m);
-    var circ = 2 * Math.PI * 26, off = circ * (1 - (pr.total ? pr.done / pr.total : 0));
-    if (m.estado !== 'disponible') {
+    if (m.lecciones) {
       return {
-        title: 'Módulo ' + m.id, back: '/modulos', navKey: 'modulos',
-        html:
-          '<section class="module-head" style="background:var(--slate)"><div><h1 class="h1" style="font-size:1.3rem">' + esc(m.titulo) + '</h1><small>Semana ' + m.semana + '</small></div></section>' +
-          '<div class="banner">' + icon('tool') + '<p><b>Módulo en construcción.</b> Su estructura ya está lista; las fichas, la actividad y el mini-reto llegan en el próximo avance.</p></div>' +
-          '<div class="goal">' + icon('target') + '<p><b>Al terminar podrás</b> ' + esc(m.objetivo) + '</p></div>' +
-          '<section class="card stack"><h2 class="h3">Temas</h2><ul class="parts">' + m.temas.map(function (t, i) { return '<li><span class="n" style="background:var(--slate)">' + (i + 1) + '</span><span>' + esc(t) + '</span></li>'; }).join('') + '</ul></section>' +
-          (m.instrumentos.length ? '<section class="stack"><h2 class="section-label">Instrumentos</h2><div class="list">' + m.instrumentos.map(function (iid) {
-            var it = inst(iid);
-            return '<div class="item locked"><span class="thumb">' + icon('flask') + '</span><span><strong>' + esc(it.nombre) + '</strong><small>' + esc(it.resumen) + '</small></span><span class="state soon">Pronto</span></div>';
-          }).join('') + '</div></section>' : '')
+        title: 'Módulo 1', back: '/modulos', navKey: 'modulos',
+        speak: function () { return 'Módulo 1: ' + m.titulo + '. Al terminar podrás ' + m.objetivo + ' Llevas ' + pr.done + ' de ' + pr.total + ' lecciones.'; },
+        html: moduleHead(m, pr) +
+          '<section class="stack"><h2 class="section-label">Antes de empezar</h2>' +
+          '<a class="item" href="#/evaluacion/diagnostica"><span class="thumb c-primary">' + icon('help') + '</span><span><strong>¿Qué sé del laboratorio?</strong><small>Prueba diagnóstica · 8 preguntas · sin calificación</small></span>' +
+          (S.diag ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a></section>' +
+          '<section class="stack"><h2 class="section-label">Lecciones</h2><div class="list">' + m.lecciones.map(function (lid, i) {
+            var L = D.LECCIONES[lid];
+            return '<a class="item" href="#/leccion/' + lid + '"><span class="thumb c-teal">' + icon(L.icono) + '</span><span><strong>' + (i + 1) + '. ' + esc(L.titulo) + '</strong><small>' + esc(L.duracion) + '</small></span>' +
+              (S.lecciones[lid] ? '<span class="state done" aria-label="Completada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a>';
+          }).join('') + '</div></section>' +
+          '<section class="stack"><h2 class="section-label">Actividades y evaluación</h2><div class="list">' +
+          '<a class="item" href="#/laboratorio"><span class="thumb c-orange">' + icon('rotate') + '</span><span><strong>Explora y descubre: recorrido libre</strong><small>Recorre el Laboratorio 3D sin estudiar todavía cada instrumento a fondo. Filtra por función o por material.</small></span><span class="state viewing">Ir</span></a>' +
+          miniItem(m, pr) + '</div></section>'
       };
     }
-    var actHTML = m.actividades.filter(function (a) { return a !== 'explora'; }).map(function (aid) {
-      var a = D.ACTIVIDADES.filter(function (x) { return x.id === aid; })[0];
-      var done = S.actividades[aid] && S.actividades[aid].veces;
-      return '<a class="item" href="#/actividad/' + aid + '"><span class="thumb c-orange">' + icon(a.icono) + '</span><span><strong>' + esc(a.nombre) + '</strong><small>' + esc(a.resumen) + '</small></span>' +
-        (done ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a>';
-    }).join('');
-    var mini = pr.all
-      ? '<a class="item" href="#/evaluacion/minireto/' + m.id + '"><span class="thumb c-violet">' + icon('clipboard') + '</span><span><strong>Mini-reto del módulo</strong><small>5 preguntas · sin límite de tiempo</small></span>' +
-        (hasBadge(m.id) ? '<span class="state done" aria-label="Logrado">' + icon('check') + '</span>' : '<span class="state viewing">Listo</span>') + '</a>'
-      : '<div class="item locked" aria-disabled="true"><span class="thumb">' + icon('lock') + '</span><span><strong>Mini-reto del módulo</strong><small>Se activa al explorar los ' + pr.total + ' instrumentos</small></span><span></span></div>';
+    var actHTML = m.actividades.filter(function (a) { return a !== 'explora'; }).map(function (aid) { return actividadItem(aid, m.id); }).join('');
     return {
       title: 'Módulo ' + m.id, back: '/modulos', navKey: 'modulos',
       speak: function () { return 'Módulo ' + m.id + ': ' + m.titulo + '. Al terminar podrás ' + m.objetivo + ' Has explorado ' + pr.done + ' de ' + pr.total + ' instrumentos.'; },
-      html:
-        '<section class="module-head"><div><h1 class="h1" style="font-size:1.3rem">' + esc(m.titulo) + '</h1><small>' + pr.total + ' instrumentos · ' + (m.actividades.length - 1) + ' actividades</small></div>' +
-        '<div class="ring" role="img" aria-label="' + pr.done + ' de ' + pr.total + ' instrumentos explorados"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="6"/>' +
-        '<circle cx="30" cy="30" r="26" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + circ.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '"/></svg><span>' + pr.done + '/' + pr.total + '</span></div></section>' +
-        '<div class="goal">' + icon('target') + '<p><b>Al terminar podrás</b> ' + esc(m.objetivo) + '</p></div>' +
+      html: moduleHead(m, pr) +
         '<section class="stack"><h2 class="section-label">Instrumentos</h2><div class="list">' + m.instrumentos.map(function (iid) {
           var it = inst(iid), st;
           if (isDone(iid)) st = '<span class="state done" aria-label="Explorado">' + icon('check') + '</span>';
@@ -629,10 +689,141 @@
           return '<a class="item' + (S.ultima === iid && !isDone(iid) ? ' current' : '') + '" href="#/ficha/' + iid + '"><span class="thumb"><img src="' + it.imagen + '" alt=""></span>' +
             '<span><strong>' + esc(it.nombre) + '</strong><small>' + esc(it.resumen) + '</small></span>' + st + '</a>';
         }).join('') + '</div></section>' +
-        '<section class="stack"><h2 class="section-label">Actividades y evaluación</h2><div class="list">' + actHTML + mini + '</div></section>'
+        '<section class="stack"><h2 class="section-label">Actividades y evaluación</h2><div class="list">' + actHTML + miniItem(m, pr) + '</div></section>' +
+        (m.id === 3 ? '<div class="banner">' + icon('users') + '<p><b>Parecidos pero diferentes</b> se hace en parejas: uno manipula los modelos y el otro registra; a mitad de la actividad cambian de rol.</p></div>' : '')
     };
   }
 
+  /* Módulo 1 · lecciones */
+  function thumbs(ids) {
+    return '<div class="ex-row">' + ids.map(function (id) {
+      var it = inst(id);
+      return '<a class="ex" href="#/ficha/' + id + '"><img src="' + it.imagen + '" alt=""><span>' + esc(it.nombre) + '</span></a>';
+    }).join('') + '</div>';
+  }
+  function completarLeccion(id) {
+    var nuevo = !S.lecciones[id];
+    S.lecciones[id] = true; save();
+    if (nuevo) {
+      var pr = modProgress(modulo(1));
+      toast(pr.all ? '¡Completaste las 3 lecciones! El mini-reto del módulo 1 ya está activo.' : '¡Lección completada! Llevas ' + pr.done + ' de 3.');
+    }
+  }
+  function viewLeccion(id) {
+    var L = D.LECCIONES[id];
+    if (!L) return null;
+    var orden = modulo(1).lecciones, k = orden.indexOf(id), next = orden[k + 1];
+    var nextHref = next ? '#/leccion/' + next : (miniAbierto(1) || orden.every(function (x) { return S.lecciones[x] || x === id; }) ? '#/evaluacion/minireto/1' : '#/modulo/1');
+    var nextLabel = next ? 'Siguiente lección' : 'Ir al mini-reto';
+    var base = { title: L.titulo, eyebrow: 'Módulo 1 · Lección ' + (k + 1) + ' de 3', back: '/modulo/1', navKey: 'modulos' };
+    var foot = '<div class="btn-row"><a class="btn outline" href="#/modulo/1">' + icon('back') + 'Módulo</a>' +
+      '<button class="btn primary" id="doneLec"' + (id === 'laboratorio' || S.lecciones[id] ? '' : ' disabled') + '>' + (id === 'laboratorio' && !S.lecciones[id] ? 'Entendido · ' + nextLabel.toLowerCase() : nextLabel) + icon('next') + '</button></div>';
+    function bindFoot(el) {
+      $('#doneLec', el).onclick = function () { completarLeccion(id); location.hash = nextHref.slice(1); };
+    }
+
+    if (id === 'laboratorio') {
+      return Object.assign(base, {
+        speak: function () { return L.titulo + '. ' + L.intro + ' ' + L.ideas.join(' ') + ' Normas básicas: ' + L.normas.join(' '); },
+        html:
+          '<p class="lead">' + esc(L.intro) + '</p>' +
+          '<section class="card stack"><h2 class="h3">Ideas clave</h2><ul class="parts">' + L.ideas.map(function (t, i) { return '<li><span class="n">' + (i + 1) + '</span><span>' + esc(t) + '</span></li>'; }).join('') + '</ul></section>' +
+          '<section class="stack"><h2 class="section-label">Los instrumentos se agrupan por lo que hacen</h2>' + L.grupos.map(function (g) {
+            return '<div class="card stack" style="gap:8px"><div class="row between"><strong>' + esc(g.titulo) + '</strong><a class="chip teal" href="#/modulo/' + g.modulo + '">Módulo ' + g.modulo + '</a></div>' + thumbs(g.ejemplos) + '</div>';
+          }).join('') + '</section>' +
+          '<section class="card stack"><div class="row" style="gap:8px">' + icon('shield') + '<h2 class="h3">Normas básicas de seguridad</h2></div><ul class="parts">' +
+          L.normas.map(function (t) { return '<li><span class="n" style="background:var(--ok)">' + icon('check') + '</span><span>' + esc(t) + '</span></li>'; }).join('') + '</ul></section>' +
+          '<div class="notebook">' + icon('pencil') + '<span>Anota en tu cuaderno para qué sirve un laboratorio y dos normas de seguridad que te parezcan importantes.</span></div>' + foot,
+        mount: bindFoot
+      });
+    }
+
+    if (id === 'materiales') {
+      var resp = {};
+      var practica = function () {
+        var ok = L.practica.filter(function (p) { return resp[p.instrumento] === p.correcta; }).length;
+        return '<p class="small muted">' + ok + ' de ' + L.practica.length + ' correctos</p>' + L.practica.map(function (p) {
+          var it = inst(p.instrumento), r = resp[p.instrumento], bien = r === p.correcta;
+          return '<div class="pick-card' + (bien ? ' ok' : '') + '"><div class="row" style="gap:10px"><img src="' + it.imagen + '" alt=""><strong>' + esc(it.nombre) + '</strong></div>' +
+            '<div class="pick" role="group" aria-label="Material de ' + esc(it.nombre) + '">' + L.materiales.map(function (mt) {
+              var cls = r === mt.id ? (bien ? ' is-ok' : ' is-bad') : '';
+              return '<button class="chip' + cls + '" data-p="' + p.instrumento + '" data-m="' + mt.id + '" aria-pressed="' + (r === mt.id) + '"' + (bien ? ' disabled' : '') + '>' + esc(mt.nombre) + '</button>';
+            }).join('') + '</div>' +
+            (r ? '<p class="small ' + (bien ? 'ok-text' : 'bad-text') + '">' + (bien ? esc(p.ok) : 'Todavía no. Mira de nuevo la tarjeta de ese material arriba.') + '</p>' : '') + '</div>';
+        }).join('');
+      };
+      return Object.assign(base, {
+        speak: function () { return L.titulo + '. ' + L.intro + ' ' + L.materiales.map(function (m) { return m.nombre + ': ' + m.texto; }).join(' '); },
+        html:
+          '<p class="lead">' + esc(L.intro) + '</p>' +
+          '<section class="stack"><h2 class="section-label">Por su fabricación</h2>' + L.materiales.map(function (mt) {
+            return '<div class="card mat-card stack" style="--mc:' + mt.color + ';gap:8px"><h3 class="h3">' + esc(mt.nombre) + '</h3><p>' + esc(mt.texto) + '</p>' + thumbs(mt.ejemplos) + '</div>';
+          }).join('') + '</section>' +
+          '<section class="card stack"><h2 class="h3">Por su uso</h2><p class="small muted">En el Laboratorio 3D puedes filtrar los 18 instrumentos por lo que hacen:</p><div class="filters">' +
+          D.FUNCIONES.map(function (f) { return '<a class="chip" href="#/laboratorio">' + esc(f.label) + '</a>'; }).join('') + '</div></section>' +
+          '<section class="stack"><h2 class="section-label">Practica: ¿de qué material es?</h2><div id="practica" class="stack" style="gap:10px">' + practica() + '</div></section>' + foot,
+        mount: function (el) {
+          function bind() {
+            $$('[data-p]', el).forEach(function (b) {
+              b.onclick = function () {
+                resp[b.getAttribute('data-p')] = b.getAttribute('data-m');
+                $('#practica', el).innerHTML = practica(); bind();
+                var all = L.practica.every(function (p) { return resp[p.instrumento] === p.correcta; });
+                if (all) { $('#doneLec', el).disabled = false; if (!S.lecciones[id]) completarLeccion(id); }
+              };
+            });
+          }
+          bind(); bindFoot(el);
+        }
+      });
+    }
+
+    // visor
+    var it = inst(L.instrumento), hechas = {};
+    var sinZoom = !use3D();
+    if (sinZoom) hechas.ampliar = true;
+    var misiones = function () {
+      return '<ul class="missions">' + L.misiones.map(function (ms) {
+        var ok = !!hechas[ms.id];
+        var txt = ms.id === 'ampliar' && sinZoom ? 'Ampliar no está disponible en la vista en fotos (ya cuenta como hecha).' : ms.id === 'girar' && sinZoom ? 'Desliza el dedo o la barra para ver otra foto del instrumento.' : ms.texto;
+        return '<li class="' + (ok ? 'ok' : '') + '"><span class="n">' + icon(ok ? 'check' : ms.icono) + '</span><span>' + esc(txt) + '</span></li>';
+      }).join('') + '</ul>';
+    };
+    return Object.assign(base, {
+      speak: function () { return L.titulo + '. ' + L.intro + ' Misiones: ' + L.misiones.map(function (m) { return m.texto; }).join(' '); },
+      html:
+        '<p class="lead">' + esc(L.intro) + '</p>' +
+        viewerHTML(it) +
+        '<section class="card stack"><h2 class="h3">Misiones</h2><div id="mis">' + misiones() + '</div></section>' +
+        '<section class="card stack"><h2 class="h3">Partes de la ' + esc(it.nombre.toLowerCase()) + '</h2><ul class="parts">' + it.partes.map(function (p) {
+          return '<li><button class="part-btn" data-part="' + p.n + '"><span class="n">' + p.n + '</span><span><b>' + esc(p.nombre) + ':</b> ' + esc(p.texto) + '</span></button></li>';
+        }).join('') + '</ul></section>' +
+        '<section class="card stack"><h2 class="h3">Consejos</h2><ul class="parts">' + L.consejos.map(function (c) { return '<li><span class="n">' + icon('bulb') + '</span><span>' + esc(c) + '</span></li>'; }).join('') + '</ul></section>' + foot,
+      mount: function (el) {
+        var r0 = null, t0 = null;
+        function marcar(mid) {
+          if (hechas[mid]) return;
+          hechas[mid] = true; $('#mis', el).innerHTML = misiones();
+          var all = L.misiones.every(function (m) { return hechas[m.id]; });
+          if (all) { $('#doneLec', el).disabled = false; if (!S.lecciones[id]) completarLeccion(id); }
+          else toast('¡Misión cumplida!');
+        }
+        function parte(n) { var p = it.partes.filter(function (x) { return x.n === n; })[0]; if (p) toast(p.nombre + ': ' + p.texto); marcar('punto'); }
+        mountViewer($('.viewer-card', el), it, {
+          onPart: parte,
+          onZoom: function () { marcar('ampliar'); },
+          onCamera: function (c) {
+            if (r0 === null) { r0 = c.radius; t0 = c.theta; }
+            if (Math.abs(c.theta - t0) > 0.35) marcar('girar');
+            if (c.radius < r0 * 0.88) marcar('ampliar');
+          },
+          onAlt: function (k) { if (k > 0) marcar('girar'); }
+        });
+        $$('.part-btn', el).forEach(function (b) { b.onclick = function () { parte(Number(b.getAttribute('data-part'))); }; });
+        bindFoot(el);
+      }
+    });
+  }
   /* 5 · Ficha del instrumento */
   function viewFicha(id) {
     var it = inst(id);
@@ -659,7 +850,7 @@
         '<span class="dots">' + TABS.map(function (t) { return '<i class="' + (e.tabs.indexOf(t.id) >= 0 ? 'on' : '') + '"></i>'; }).join('') + '</span>' +
         (e.hecho ? icon('checkCircle') + 'Instrumento explorado' : 'Revisa las 3 pestañas para marcarlo como explorado') + '</div>';
     }
-    var nextLabel = nextId ? 'Siguiente: ' + inst(nextId).nombre.split(' ')[0] : (modProgress(m).all ? 'Ir al mini-reto' : 'Volver al módulo');
+    var nextLabel = nextId ? 'Siguiente: ' + inst(nextId).nombre.split(' ')[0] : (miniAbierto(m.id) ? 'Ir al mini-reto' : 'Volver al módulo');
     return {
       title: it.nombre, eyebrow: 'Módulo ' + m.id + ' · ' + (idx + 1) + ' de ' + m.instrumentos.length, back: '/modulo/' + m.id, navKey: 'modulos',
       speak: tabText,
@@ -705,7 +896,7 @@
         $('#listenBtn').onclick = function () { Voice.speak(tabText()); };
         $('#nextBtn').onclick = function () {
           if (nextId) go('/ficha/' + nextId);
-          else go(modProgress(m).all ? '/evaluacion/minireto/' + m.id : '/modulo/' + m.id);
+          else go(miniAbierto(m.id) ? '/evaluacion/minireto/' + m.id : '/modulo/' + m.id);
         };
       }
     };
@@ -762,22 +953,47 @@
 
   /* 7 · Actividades */
   function viewActividades() {
+    var reto = retoAbierto();
+    function estado(a) {
+      if (a.id === 'mesa') return S.retoFinal ? 'done' : reto ? 'new' : 'locked';
+      if (a.id === 'explicalo') return S.explicalo ? 'done' : 'new';
+      if (a.id === 'parecidos') return S.actividades.parecidos ? 'done' : 'new';
+      if (a.modulos) return a.modulos.some(function (m) { return actData(a.id, m); }) ? 'done' : 'new';
+      return D.MODULOS.some(function (m) { return modProgress(m).done > 0; }) ? 'done' : 'new';
+    }
     return {
-      title: 'Actividades', eyebrow: '5 actividades en Orbita', back: '/menu', navKey: 'inicio',
+      title: 'Actividades', eyebrow: D.ACTIVIDADES.length + ' actividades en Orbita', back: '/menu', navKey: 'inicio',
       html:
         '<p class="lead">Cada actividad dice qué hacer en una o dos frases, muestra un ejemplo y se puede repetir sin penalización.</p>' +
         '<div class="list">' + D.ACTIVIDADES.map(function (a) {
-          var st = S.actividades[a.id] && S.actividades[a.id].veces ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : (a.estado === 'bloqueada' ? '<span class="state soon">' + 'Bloqueada' + '</span>' : '<span class="state new">Nueva</span>');
-          var inner = '<span class="thumb ' + (a.estado === 'bloqueada' ? '' : 'c-orange') + '">' + icon(a.estado === 'bloqueada' ? 'lock' : a.icono) + '</span>' +
+          var e = estado(a), locked = e === 'locked';
+          var st = e === 'done' ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : (locked ? '<span class="state soon">Bloqueada</span>' : '<span class="state new">Nueva</span>');
+          var inner = '<span class="thumb ' + (locked ? '' : (a.cierre ? 'c-amber' : 'c-orange')) + '">' + icon(locked ? 'lock' : a.icono) + '</span>' +
             '<span><strong>' + esc(a.nombre) + '</strong><small>' + esc(a.resumen) + '</small><small>' + a.oe.join(' · ') + ' · ' + esc(a.donde) + '</small></span>' + st;
-          return a.estado === 'bloqueada' ? '<div class="item locked">' + inner + '</div>' : '<a class="item" href="#/actividad/' + a.id + '">' + inner + '</a>';
+          return locked ? '<div class="item locked">' + inner + '</div>' : '<a class="item" href="#/actividad/' + a.id + '">' + inner + '</a>';
         }).join('') + '</div>' +
-        '<div class="banner">' + icon('users') + '<p>La sexta actividad, <b>Explícalo con tus palabras</b>, se hace en clase: cada estudiante explica un instrumento de forma oral, escrita o con un dibujo rotulado.</p></div>'
+        (reto ? '' : '<div class="banner">' + icon('info') + '<p><b>Arma tu mesa de trabajo</b> se activa cuando completas los cuatro módulos (lecciones del módulo 1 y fichas de los módulos 2, 3 y 4).</p></div>')
+    };
+  }
+
+  // Actividades que se repiten en varios módulos: primero se elige el módulo
+  function viewElegirModulo(aid) {
+    var a = D.ACTIVIDADES.filter(function (x) { return x.id === aid; })[0];
+    return {
+      title: a.nombre, eyebrow: 'Elige el módulo', back: '/actividades', navKey: 'inicio',
+      html:
+        '<div class="goal">' + icon('bulb') + '<p>' + esc(a.resumen) + '</p></div>' +
+        '<div class="list">' + a.modulos.map(function (mid) {
+          var m = modulo(mid), d = actData(aid, mid);
+          var detalle = aid === 'quien-soy' ? '6 rondas con los instrumentos del módulo' : (mid === 4 ? '5 categorías · los 18 instrumentos' : '2 bandejas · 6 instrumentos');
+          return '<a class="item" href="#/actividad/' + aid + '/' + mid + '"><span class="thumb c-orange">' + mid + '</span><span><strong>Módulo ' + mid + ' · ' + esc(m.corto) + '</strong><small>' + detalle + '</small></span>' +
+            (d ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a>';
+        }).join('') + '</div>'
     };
   }
 
   function viewExplora() {
-    var m = modulo(2);
+    var mods = D.MODULOS.filter(function (m) { return m.instrumentos.length; });
     return {
       title: 'Explora y descubre', eyebrow: 'Actividad base · OE1 · OE2', back: '/actividades', navKey: 'inicio',
       html:
@@ -786,47 +1002,56 @@
         '<div class="table-wrap"><table class="cuadro"><thead><tr><th>Instrumento</th><th>Característica 1</th><th>Característica 2</th></tr></thead><tbody>' +
         '<tr><td>Ejemplo: Probeta graduada</td><td>Tiene escala en mL</td><td>Tiene base ancha</td></tr>' +
         '<tr><td class="blank">…</td><td class="blank">…</td><td class="blank">…</td></tr></tbody></table></div></section>' +
-        '<section class="stack"><h2 class="section-label">Módulo 2 · ' + esc(m.titulo) + '</h2><div class="list">' + m.instrumentos.map(function (iid) {
-          var it = inst(iid);
-          return '<a class="item" href="#/ficha/' + iid + '"><span class="thumb"><img src="' + it.imagen + '" alt=""></span><span><strong>' + esc(it.nombre) + '</strong><small>' + esc(it.resumen) + '</small></span>' +
-            (isDone(iid) ? '<span class="state done" aria-label="Explorado">' + icon('check') + '</span>' : '<span class="state new">Abrir</span>') + '</a>';
-        }).join('') + '</div></section>'
+        '<a class="item" href="#/laboratorio"><span class="thumb c-teal">' + icon('flask') + '</span><span><strong>Módulo 1 · Recorrido libre</strong><small>Recorre el Laboratorio 3D y filtra por función o por material</small></span><span class="state viewing">Ir</span></a>' +
+        mods.map(function (m) {
+          var pr = modProgress(m);
+          return '<section class="stack"><div class="row between"><h2 class="section-label">Módulo ' + m.id + ' · ' + esc(m.corto) + '</h2><span class="small muted">' + pr.done + ' de ' + pr.total + '</span></div><div class="list">' + m.instrumentos.map(function (iid) {
+            var it = inst(iid);
+            return '<a class="item" href="#/ficha/' + iid + '"><span class="thumb"><img src="' + it.imagen + '" alt=""></span><span><strong>' + esc(it.nombre) + '</strong><small>' + esc(it.resumen) + '</small></span>' +
+              (isDone(iid) ? '<span class="state done" aria-label="Explorado">' + icon('check') + '</span>' : '<span class="state new">Abrir</span>') + '</a>';
+          }).join('') + '</div></section>';
+        }).join('')
     };
   }
 
   /* ¿Quién soy? */
-  function viewQuienSoy() {
-    var ids = modulo(2).instrumentos;
+  function viewQuienSoy(mid) {
+    mid = Number(mid);
+    var m = modulo(mid);
+    if (!m || !m.instrumentos.length) return null;
+    var ids = m.instrumentos, key = actKey('quien-soy', mid), N = ids.length, MAXP = N * 4;
     var st = { started: false, order: shuffle(ids), i: 0, hints: 0, answered: null, points: 0, correct: 0, opts: [] };
     function newRound() { st.hints = 0; st.answered = null; var cur = st.order[st.i]; st.opts = shuffle([cur].concat(shuffle(ids.filter(function (x) { return x !== cur; })).slice(0, 3))); }
     function worth() { return Math.max(1, 4 - st.hints); }
+    var ejemplo = { 2: 'si ves un tubo alto con escala y base ancha, piensa en los instrumentos que sirven para medir.', 3: 'si ves un aro sostenido por patas, piensa en los instrumentos que sostienen recipientes sobre el mechero.', 4: 'si ves un cuenco grueso con un mazo, piensa en los instrumentos que sirven para triturar.' }[mid];
     function paint(el) {
       if (!st.started) {
         el.innerHTML =
           '<div class="goal">' + icon('bulb') + '<p>Un instrumento gira en pantalla sin su nombre. Elige cuál es entre cuatro opciones.</p></div>' +
           '<section class="card stack"><h2 class="h3">Cómo se juega</h2>' +
           '<ul class="parts"><li><span class="n">1</span><span>Observa el modelo. Puedes girarlo y ampliarlo.</span></li><li><span class="n">2</span><span>Si dudas, pide hasta 3 pistas: forma, material y uso. Cada pista resta un punto.</span></li><li><span class="n">3</span><span>Elige tu respuesta. Siempre verás en qué detalle debías fijarte.</span></li></ul>' +
-          '<p class="small muted">Ejemplo: si ves un tubo alto con escala y base ancha, piensa en los instrumentos que sirven para medir.</p></section>' +
-          '<button class="btn primary block" id="go">Empezar · 6 rondas</button>';
+          '<p class="small muted">Ejemplo: ' + esc(ejemplo) + '</p></section>' +
+          '<button class="btn primary block" id="go">Empezar · ' + N + ' rondas</button>';
         $('#go', el).onclick = function () { st.started = true; newRound(); paint(el); };
         return;
       }
       if (st.i >= st.order.length) {
-        var best = Math.max(st.points, (S.actividades['quien-soy'] || {}).mejor || 0);
-        S.actividades['quien-soy'] = { mejor: best, ultimo: st.points, aciertos: st.correct, veces: ((S.actividades['quien-soy'] || {}).veces || 0) + 1, fecha: Date.now() };
+        var prev = S.actividades[key] || {};
+        var best = Math.max(st.points, prev.mejor || 0);
+        S.actividades[key] = { mejor: best, ultimo: st.points, aciertos: st.correct, veces: (prev.veces || 0) + 1, fecha: Date.now() };
         save();
         el.innerHTML =
-          '<section class="award"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#3a4cca') + '</svg><div><small>¡Terminaste!</small><strong>' + st.points + ' de 24 puntos</strong><span class="muted">' + st.correct + ' de 6 instrumentos reconocidos</span></div></section>' +
+          '<section class="award"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#3a4cca') + '</svg><div><small>¡Terminaste!</small><strong>' + st.points + ' de ' + MAXP + ' puntos</strong><span class="muted">' + st.correct + ' de ' + N + ' instrumentos reconocidos</span></div></section>' +
           '<p class="lead">Tu mejor puntaje: ' + best + ' puntos. Puedes repetir la actividad las veces que quieras.</p>' +
-          '<div class="btn-row even"><button class="btn outline" id="again">' + icon('rotate') + 'Repetir</button><a class="btn primary" href="#/modulo/2">Volver al módulo</a></div>';
+          '<div class="btn-row even"><button class="btn outline" id="again">' + icon('rotate') + 'Repetir</button><a class="btn primary" href="#/modulo/' + mid + '">Volver al módulo</a></div>';
         $('#again', el).onclick = function () { st = { started: true, order: shuffle(ids), i: 0, hints: 0, answered: null, points: 0, correct: 0, opts: [] }; newRound(); paint(el); };
         return;
       }
       var cur = inst(st.order[st.i]);
       var hintKeys = ['forma', 'material', 'uso'];
       el.innerHTML =
-        '<div class="qhead"><div class="row between small"><b>Ronda ' + (st.i + 1) + ' de 6</b><span class="points">Vale ' + worth() + (worth() === 1 ? ' punto' : ' puntos') + ' · Total ' + st.points + '</span></div>' +
-        '<div class="segments" style="grid-template-columns:repeat(6,1fr)">' + st.order.map(function (_, k) { return '<i class="' + (k < st.i ? 'ok' : k === st.i ? 'now' : '') + '"></i>'; }).join('') + '</div></div>' +
+        '<div class="qhead"><div class="row between small"><b>Ronda ' + (st.i + 1) + ' de ' + N + '</b><span class="points">Vale ' + worth() + (worth() === 1 ? ' punto' : ' puntos') + ' · Total ' + st.points + '</span></div>' +
+        '<div class="segments" style="grid-template-columns:repeat(' + N + ',1fr)">' + st.order.map(function (_, k) { return '<i class="' + (k < st.i ? 'ok' : k === st.i ? 'now' : '') + '"></i>'; }).join('') + '</div></div>' +
         viewerHTML(cur, { hotspots: false, anon: true, controls: false, hint: false }) +
         '<div class="hints">' + hintKeys.slice(0, st.hints).map(function (k, n) { return '<div class="hint-line">' + icon('bulb') + '<p><b>Pista ' + (n + 1) + ' · ' + k + ':</b> ' + esc(cur.pistas[k]) + '</p></div>'; }).join('') +
         (st.hints < 3 && !st.answered ? '<button class="btn ghost" id="hintBtn">' + icon('bulb') + 'Pedir pista ' + (st.hints + 1) + ' de 3: ' + hintKeys[st.hints] + '</button>' : '') + '</div>' +
@@ -836,8 +1061,9 @@
           return '<button class="opt' + cls + '" role="radio" aria-checked="' + (st.answered === oid) + '" data-o="' + oid + '"' + (st.answered ? ' disabled' : '') + '><span class="letter">' + LETTERS(k) + '</span>' + esc(o.nombre) + '</button>';
         }).join('') + '</div>' +
         (st.answered ? '<div class="feedback ' + (st.answered === cur.id ? 'ok' : 'bad') + '" role="status">' + icon(st.answered === cur.id ? 'checkCircle' : 'xCircle') +
-          '<div><b>' + (st.answered === cur.id ? '¡Sí! Soy ' + esc(cur.nombre) + '.' : 'No. Soy ' + esc(cur.nombre) + '.') + '</b><p>' + esc(cur.fijate) + '</p></div></div>' +
-          '<button class="btn primary block" id="nextR">' + (st.i < 5 ? 'Siguiente ronda' : 'Ver mi puntaje') + icon('next') + '</button>' : '');
+          '<div><b>' + (st.answered === cur.id ? '¡Sí! Soy ' + esc(cur.nombre) + '.' : 'No. Soy ' + esc(cur.nombre) + '.') + '</b><p>' + esc(cur.fijate) + '</p>' +
+          (st.answered !== cur.id ? '<p><a href="#/ficha/' + cur.id + '">' + icon('book') + ' Ver la ficha</a></p>' : '') + '</div></div>' +
+          '<button class="btn primary block" id="nextR">' + (st.i < N - 1 ? 'Siguiente ronda' : 'Ver mi puntaje') + icon('next') + '</button>' : '');
       var card = $('.viewer-card', el); if (card) mountViewer(card, cur, { hotspots: false, anon: true, controls: false, hint: false });
       var hb = $('#hintBtn', el); if (hb) hb.onclick = function () { st.hints++; paint(el); };
       $$('.opt', el).forEach(function (b) {
@@ -851,7 +1077,7 @@
       var nb = $('#nextR', el); if (nb) nb.onclick = function () { st.i++; if (st.i < st.order.length) newRound(); paint(el); window.scrollTo(0, 0); $('#view').scrollTop = 0; };
     }
     return {
-      title: '¿Quién soy?', eyebrow: 'Actividad · Módulo 2', back: '/modulo/2', navKey: 'modulos',
+      title: '¿Quién soy?', eyebrow: 'Actividad · Módulo ' + mid, back: '/modulo/' + mid, navKey: 'modulos',
       speak: function () {
         if (!st.started || st.i >= st.order.length) return $('#view').innerText;
         var cur = inst(st.order[st.i]);
@@ -864,31 +1090,37 @@
   }
 
   /* Cada cosa en su lugar */
-  function viewCadaCosa() {
-    var C = D.CLASIFICACION_M2;
-    var st = { started: false, pool: shuffle(Object.keys(C.items)), placed: { contener: [], medir: [] }, sel: null, msg: null, errors: 0 };
+  function viewCadaCosa(mid) {
+    mid = Number(mid);
+    var C = D.CLASIFICACION[mid];
+    if (!C) return null;
+    var key = actKey('cada-cosa', mid), ids = Object.keys(C.items), total = ids.length;
+    function nuevo() { var pl = {}; C.bandejas.forEach(function (b) { pl[b.id] = []; }); return { started: true, pool: shuffle(ids), placed: pl, sel: null, msg: null, errors: 0, saved: false }; }
+    var st = nuevo(); st.started = false;
+    var nombres = C.bandejas.map(function (b) { return '<b>' + esc(b.nombre) + '</b>'; });
     function paint(el) {
       if (!st.started) {
         el.innerHTML =
           '<div class="goal">' + icon('bulb') + '<p>Toca un instrumento y luego la bandeja a la que pertenece.</p></div>' +
           '<section class="card stack"><h2 class="h3">Cómo se juega</h2><ul class="parts">' +
           '<li><span class="n">1</span><span>Toca un instrumento de la lista <b>Por ubicar</b>.</span></li>' +
-          '<li><span class="n">2</span><span>Toca la bandeja donde crees que va: <b>Sirven para contener</b> o <b>Sirven para medir volumen</b>.</span></li>' +
-          '<li><span class="n">3</span><span>Si aciertas, queda en la bandeja. Si no, verás por qué y el instrumento vuelve a la lista para intentarlo otra vez.</span></li></ul></section>' +
-          '<button class="btn primary block" id="go">Empezar</button>';
+          '<li><span class="n">2</span><span>Toca la bandeja donde crees que va: ' + (nombres.length === 2 ? nombres.join(' o ') : nombres.slice(0, -1).join(', ') + ' o ' + nombres[nombres.length - 1]) + '.</span></li>' +
+          '<li><span class="n">3</span><span>Si aciertas, queda en la bandeja. Si no, verás por qué y el instrumento vuelve a la lista para intentarlo otra vez.</span></li></ul>' +
+          (mid === 4 ? '<p class="small muted">En este módulo trabajas con los 18 instrumentos de todo Orbita: piensa en la función principal de cada uno.</p>' : '<p class="small muted">Ejemplo: la probeta va en «Sirven para medir volumen» porque tiene una escala en mililitros.</p>') + '</section>' +
+          '<button class="btn primary block" id="go">Empezar · ' + total + ' instrumentos</button>';
         $('#go', el).onclick = function () { st.started = true; paint(el); };
         return;
       }
-      var total = Object.keys(C.items).length, placedN = st.placed.contener.length + st.placed.medir.length;
-      if (placedN === total) {
-        var prev = S.actividades['cada-cosa'] || {};
-        S.actividades['cada-cosa'] = { veces: (prev.veces || 0) + 1, errores: st.errors, fecha: Date.now() };
-        save();
+      var placedN = C.bandejas.reduce(function (a, b) { return a + st.placed[b.id].length; }, 0);
+      if (placedN === total && !st.saved) {
+        var prev = S.actividades[key] || {};
+        S.actividades[key] = { veces: (prev.veces || 0) + 1, errores: st.errors, fecha: Date.now() };
+        st.saved = true; save();
       }
       el.innerHTML =
         '<div class="goal">' + icon('bulb') + '<p>Toca un instrumento y luego la bandeja a la que pertenece.</p></div>' +
-        '<div class="trays">' + C.bandejas.map(function (b) {
-          return '<button class="tray' + (st.sel ? ' armed' : '') + '" data-tray="' + b.id + '" aria-label="Bandeja: ' + esc(b.nombre) + '"><h3>' + icon(b.icono) + esc(b.nombre) + '</h3><span class="placed">' +
+        '<div class="trays' + (C.bandejas.length > 2 ? ' many' : '') + '">' + C.bandejas.map(function (b) {
+          return '<button class="tray' + (st.sel ? ' armed' : '') + '" data-tray="' + b.id + '" aria-label="Bandeja: ' + esc(b.nombre) + '"><h3>' + icon(b.icono) + esc(b.nombre) + '<span class="cnt">' + st.placed[b.id].length + '</span></h3><span class="placed">' +
             st.placed[b.id].map(function (id) { var it = inst(id); return '<span class="placed-item"><img src="' + it.imagen + '" alt="">' + esc(it.nombre) + icon('checkCircle') + '</span>'; }).join('') +
             '</span>' + (placedN < total ? '<span class="drop-hint">' + (st.sel ? 'Toca aquí para ubicar' : 'Bandeja') + '</span>' : '') + '</button>';
         }).join('') + '</div>' +
@@ -899,10 +1131,10 @@
               return '<button aria-pressed="' + (st.sel === id) + '" data-item="' + id + '"><img src="' + it.imagen + '" alt="">' + esc(it.nombre) + '</button>';
             }).join('') + '</div>' +
             (st.sel ? '<div class="feedback info">' + icon('info') + '<p>Elegiste <b>' + esc(inst(st.sel).nombre) + '</b>. Ahora toca la bandeja donde va.</p></div>' : '')
-          : '<section class="award"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#0b8f81') + '</svg><div><small>¡Actividad completada!</small><strong>6 de 6 ubicados</strong><span class="muted">' + (st.errors === 0 ? 'Sin errores' : st.errors + (st.errors === 1 ? ' intento por corregir' : ' intentos por corregir')) + '</span></div></section>') +
+          : '<section class="award"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#0b8f81') + '</svg><div><small>¡Actividad completada!</small><strong>' + total + ' de ' + total + ' ubicados</strong><span class="muted">' + (st.errors === 0 ? 'Sin errores' : st.errors + (st.errors === 1 ? ' intento por corregir' : ' intentos por corregir')) + '</span></div></section>') +
         (st.msg ? '<div class="feedback ' + st.msg.kind + '" role="status">' + icon(st.msg.kind === 'ok' ? 'checkCircle' : 'xCircle') + '<p><b>' + (st.msg.kind === 'ok' ? '¡Muy bien!' : 'Todavía no.') + '</b> ' + esc(st.msg.text) + '</p></div>' : '') +
         '<div class="btn-row' + (placedN === total ? ' even' : '') + '"><button class="btn outline" id="restart">' + icon('rotate') + 'Empezar de nuevo</button>' +
-        (placedN === total ? '<a class="btn primary" href="#/modulo/2">Volver al módulo</a>' : '<span></span>') + '</div>';
+        (placedN === total ? '<a class="btn primary" href="#/modulo/' + mid + '">Volver al módulo</a>' : '<span></span>') + '</div>';
       $$('[data-item]', el).forEach(function (b) { b.onclick = function () { st.sel = st.sel === b.getAttribute('data-item') ? null : b.getAttribute('data-item'); st.msg = null; paint(el); }; });
       $$('[data-tray]', el).forEach(function (b) {
         b.onclick = function () {
@@ -913,12 +1145,13 @@
             st.msg = { kind: 'ok', text: item.ok };
           } else { st.errors++; st.msg = { kind: 'bad', text: item.no }; }
           st.sel = null; paint(el);
+          var f = $('.feedback', el); if (f && C.bandejas.length > 2) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         };
       });
-      $('#restart', el).onclick = function () { st = { started: true, pool: shuffle(Object.keys(C.items)), placed: { contener: [], medir: [] }, sel: null, msg: null, errors: 0 }; paint(el); };
+      $('#restart', el).onclick = function () { st = nuevo(); paint(el); };
     }
     return {
-      title: 'Cada cosa en su lugar', eyebrow: 'Actividad · Módulo 2', back: '/modulo/2', navKey: 'modulos',
+      title: 'Cada cosa en su lugar', eyebrow: 'Actividad · Módulo ' + mid, back: '/modulo/' + mid, navKey: 'modulos',
       html: '<div id="game" class="stack" style="gap:14px"></div>',
       mount: function (el) { paint($('#game', el)); }
     };
@@ -928,17 +1161,16 @@
   function viewParecidos() {
     var done = (S.actividades.parecidos || {}).parejas || {};
     return {
-      title: 'Parecidos pero diferentes', eyebrow: 'Actividad en parejas · OE2 · OE4', back: '/actividades', navKey: 'inicio',
+      title: 'Parecidos pero diferentes', eyebrow: 'Actividad en parejas · Módulo 3', back: '/modulo/3', navKey: 'modulos',
       html:
         '<div class="goal">' + icon('users') + '<p>En parejas, comparen dos instrumentos que suelen confundirse y completen en el cuaderno un cuadro de semejanzas y diferencias.</p></div>' +
-        '<div class="banner">' + icon('info') + '<p>Esta actividad se trabaja en el módulo 3. Por ahora están disponibles las parejas del módulo 2; las pinzas, el trípode y el soporte llegan con su módulo.</p></div>' +
+        '<p class="small muted">Elijan al menos dos parejas. Las dos primeras retoman instrumentos del módulo 2.</p>' +
         '<div class="list">' + D.PAREJAS.map(function (p) {
           var a = inst(p.a), b = inst(p.b);
-          return '<a class="item" href="#/actividad/parecidos/' + p.id + '"><span class="thumb"><img src="' + a.imagen + '" alt=""></span><span><strong>' + esc(a.nombre) + ' y ' + esc(b.nombre.toLowerCase()) + '</strong><small>Comparar forma, material, escala y uso</small></span>' +
+          return '<a class="item" href="#/actividad/parecidos/' + p.id + '"><span class="thumb duo"><img src="' + a.imagen + '" alt=""><img src="' + b.imagen + '" alt=""></span><span><strong>' + esc(a.nombre) + ' y ' + esc(b.nombre.toLowerCase()) + '</strong><small>Módulo ' + a.modulo + ' · comparar forma, material y uso</small></span>' +
             (done[p.id] ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a>';
-        }).join('') +
-        '<div class="item locked"><span class="thumb">' + icon('lock') + '</span><span><strong>Pinza para tubo y pinza con nuez</strong><small>Llega con el módulo 3</small></span><span></span></div>' +
-        '<div class="item locked"><span class="thumb">' + icon('lock') + '</span><span><strong>Trípode y soporte universal</strong><small>Llega con el módulo 3</small></span><span></span></div></div>'
+        }).join('') + '</div>' +
+        '<div class="banner">' + icon('clipboard') + '<p>Tu docente revisa el trabajo con una lista de chequeo: que ambos manipulen los modelos, que registren diferencias y semejanzas correctas y que participen en la puesta en común.</p></div>'
     };
   }
   function viewPareja(pid) {
@@ -957,7 +1189,7 @@
       return '<div class="role"><b>' + icon('hand') + ' Explorador: ' + r[0] + '</b>Gira, amplía y compara los dos modelos.</div><div class="role"><b>' + icon('pencil') + ' Relator: ' + r[1] + '</b>Anota en el cuaderno lo que observan.</div>';
     }
     return {
-      title: 'Parecidos pero diferentes', eyebrow: a.nombre + ' y ' + b.nombre.toLowerCase(), back: '/actividad/parecidos', navKey: 'inicio',
+      title: 'Parecidos pero diferentes', eyebrow: a.nombre + ' y ' + b.nombre.toLowerCase(), back: '/actividad/parecidos', navKey: 'modulos',
       html:
         '<div class="pair">' + [a, b].map(function (it) {
           return '<div>' + viewerHTML(it, { hotspots: false, controls: false, hint: false, chip: false }) + '<p class="label">' + esc(it.nombre) + '</p></div>';
@@ -965,9 +1197,7 @@
         '<section class="stack"><h2 class="section-label">Roles</h2><div class="roles" id="roles">' + roles() + '</div>' +
         '<button class="btn outline" id="swap">' + icon('rotate') + 'Cambiar roles a mitad de la actividad</button></section>' +
         '<section class="card stack"><h2 class="h3">Conversen y respondan</h2><ul class="parts">' +
-        '<li><span class="n">1</span><span>¿En qué se parecen por su forma y su material?</span></li>' +
-        '<li><span class="n">2</span><span>¿Cuál tiene escala de medida? ¿Es precisa o aproximada?</span></li>' +
-        '<li><span class="n">3</span><span>¿Para qué sirve cada uno? ¿Qué detalle permite diferenciarlos?</span></li></ul></section>' +
+        p.preguntas.map(function (q, i) { return '<li><span class="n">' + (i + 1) + '</span><span>' + esc(q) + '</span></li>'; }).join('') + '</ul></section>' +
         '<section class="stack"><h2 class="section-label">Cuadro para el cuaderno</h2><div id="cuadro">' + cuadro() + '</div>' +
         '<button class="btn ghost" id="reveal">' + icon('checkCircle') + 'Comparar con el cuadro sugerido</button></section>' +
         '<button class="btn primary block" id="doneBtn">Terminamos la comparación</button>',
@@ -977,6 +1207,7 @@
         $('#reveal', el).onclick = function () { reveal = !reveal; $('#cuadro', el).innerHTML = cuadro(); this.innerHTML = icon(reveal ? 'x' : 'checkCircle') + (reveal ? 'Ocultar el cuadro sugerido' : 'Comparar con el cuadro sugerido'); };
         $('#doneBtn', el).onclick = function () {
           var cur = S.actividades.parecidos || { parejas: {}, veces: 0 };
+          cur.parejas = cur.parejas || {};
           cur.parejas[p.id] = true; cur.veces = (cur.veces || 0) + 1; cur.fecha = Date.now();
           S.actividades.parecidos = cur; save();
           toast('¡Listo! Preparen su cuadro para la puesta en común.');
@@ -988,7 +1219,6 @@
 
   /* 8 · Evaluación */
   function viewEvaluacion() {
-    var m2 = modProgress(modulo(2));
     var d = S.diag;
     return {
       title: 'Evaluación', eyebrow: 'Diagnóstica, mini-retos y reto final', back: '/menu', navKey: 'inicio',
@@ -998,26 +1228,187 @@
         '<a class="item" href="#/evaluacion/diagnostica"><span class="thumb c-primary">' + icon('help') + '</span><span><strong>¿Qué sé del laboratorio?</strong><small>Prueba diagnóstica · 8 preguntas · sin calificación</small></span>' +
         (d ? '<span class="state done" aria-label="Realizada">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a></section>' +
         '<section class="stack"><h2 class="section-label">Mini-retos por módulo</h2><div class="list">' + D.MODULOS.map(function (m) {
-          if (m.id === 2) {
-            if (!m2.all) return '<div class="item locked"><span class="thumb">' + icon('lock') + '</span><span><strong>Mini-reto · Módulo 2</strong><small>Explora los 6 instrumentos para activarlo (' + m2.done + ' de 6)</small></span><a class="state viewing" href="#/modulo/2">Ir</a></div>';
-            var md = miniData(2);
-            return '<a class="item" href="#/evaluacion/minireto/2"><span class="thumb c-violet">' + icon('clipboard') + '</span><span><strong>Mini-reto · Módulo 2</strong><small>' + (md ? 'Último intento: ' + md.intentos[md.intentos.length - 1].aciertos + ' de 5' : '5 preguntas · logro con 4 aciertos') + '</small></span>' +
-              (hasBadge(2) ? '<span class="state done" aria-label="Logrado">' + icon('check') + '</span>' : '<span class="state viewing">Listo</span>') + '</a>';
-          }
-          return '<div class="item locked"><span class="thumb">' + icon('tool') + '</span><span><strong>Mini-reto · Módulo ' + m.id + '</strong><small>En construcción</small></span><span></span></div>';
+          var pr = modProgress(m);
+          if (!miniAbierto(m.id)) return '<div class="item locked"><span class="thumb">' + icon('lock') + '</span><span><strong>Mini-reto · Módulo ' + m.id + '</strong><small>' + (m.lecciones ? 'Completa las 3 lecciones' : 'Explora los ' + pr.total + ' instrumentos') + ' para activarlo (' + pr.done + ' de ' + pr.total + ')</small></span><a class="state viewing" href="#/modulo/' + m.id + '">Ir</a></div>';
+          var md = miniData(m.id);
+          return '<a class="item" href="#/evaluacion/minireto/' + m.id + '"><span class="thumb c-violet">' + icon('clipboard') + '</span><span><strong>Mini-reto · Módulo ' + m.id + '</strong><small>' + (md ? 'Último intento: ' + md.intentos[md.intentos.length - 1].aciertos + ' de 5' : '5 preguntas · logro con 4 aciertos') + '</small></span>' +
+            (hasBadge(m.id) ? '<span class="state done" aria-label="Logrado">' + icon('check') + '</span>' : '<span class="state viewing">Listo</span>') + '</a>';
         }).join('') + '</div></section>' +
-        '<section class="stack"><h2 class="section-label">Cierre</h2><div class="item locked"><span class="thumb">' + icon('lock') + '</span><span><strong>Reto final: Arma tu mesa de trabajo</strong><small>Se activa al completar los 4 módulos · se valora con rúbrica</small></span><span></span></div></section>'
+        '<section class="stack"><h2 class="section-label">Cierre</h2>' +
+        (retoAbierto()
+          ? '<a class="item" href="#/actividad/mesa"><span class="thumb c-amber">' + icon('flask') + '</span><span><strong>Reto final: Arma tu mesa de trabajo</strong><small>6 situaciones · se valora con rúbrica</small></span>' + (S.retoFinal ? '<span class="state done" aria-label="Realizado">' + icon('check') + '</span>' : '<span class="state viewing">Listo</span>') + '</a>'
+          : '<div class="item locked"><span class="thumb">' + icon('lock') + '</span><span><strong>Reto final: Arma tu mesa de trabajo</strong><small>Se activa al completar los 4 módulos · se valora con rúbrica</small></span><span></span></div>') +
+        '<a class="item" href="#/actividad/explicalo"><span class="thumb c-amber">' + icon('pencil') + '</span><span><strong>Explícalo con tus palabras</strong><small>Cierre en clase: oral, escrito o con un dibujo rotulado</small></span>' + (S.explicalo ? '<span class="state done" aria-label="Preparado">' + icon('check') + '</span>' : '<span class="state new">Nueva</span>') + '</a></section>'
     };
   }
 
+  /* Reto final · Arma tu mesa de trabajo */
+  function evaluarMesa(sit, sel) {
+    var faltan = sit.necesarios.filter(function (g) { return !g.some(function (id) { return sel.indexOf(id) >= 0; }); });
+    var validos = sit.necesarios.reduce(function (a, g) { return a.concat(g); }, []).concat(sit.utiles);
+    var bien = sel.filter(function (id) { return validos.indexOf(id) >= 0; });
+    var sobran = sel.filter(function (id) { return validos.indexOf(id) < 0; });
+    return { faltan: faltan, bien: bien, sobran: sobran, completa: !faltan.length && !sobran.length };
+  }
+  function porque(sit, id) {
+    var it = inst(id);
+    return (sit.explica && sit.explica[id]) || (it.nombre + ' sirve para ' + it.resumen.toLowerCase() + '; en esta situación no se necesita.');
+  }
+  function viewRetoFinal() {
+    if (!retoAbierto()) {
+      return {
+        title: 'Arma tu mesa de trabajo', eyebrow: 'Reto final', back: '/evaluacion', navKey: 'inicio',
+        html: '<div class="banner">' + icon('lock') + '<p>El reto final se activa cuando completas los cuatro módulos: las 3 lecciones del módulo 1 y las fichas de los módulos 2, 3 y 4.</p></div>' +
+          '<div class="list">' + D.MODULOS.map(function (m) { var pr = modProgress(m); return '<a class="item" href="#/modulo/' + m.id + '"><span class="thumb ' + (pr.all ? 'c-teal' : '') + '">' + icon(pr.all ? 'check' : 'layers') + '</span><span><strong>Módulo ' + m.id + ' · ' + esc(m.corto) + '</strong><small>' + pr.done + ' de ' + pr.total + ' ' + pr.unidad + '</small></span><span class="go">' + icon('next') + '</span></a>'; }).join('') + '</div>'
+      };
+    }
+    var R = D.RETO_FINAL.situaciones, todos = Object.keys(D.INSTRUMENTOS);
+    var st = { started: false, i: 0, sel: [], checked: false, intentos: 0, answers: [], just: '', oral: false };
+    function paint(el) {
+      if (!st.started) {
+        el.innerHTML =
+          '<div class="goal">' + icon('bulb') + '<p>Lee la situación y toca en el estante los instrumentos que usarías. Luego explica por qué los elegiste.</p></div>' +
+          '<section class="card stack"><h2 class="h3">Cómo funciona</h2><ul class="parts">' +
+          '<li><span class="n">1</span><span>Son ' + R.length + ' situaciones sencillas: no tienes que hacer ningún procedimiento, solo elegir.</span></li>' +
+          '<li><span class="n">2</span><span>Toca «Comprobar mi mesa» y verás qué elegiste bien, qué te faltó y qué no hacía falta. Puedes corregir.</span></li>' +
+          '<li><span class="n">3</span><span>Escribe una frase corta con tu justificación o marca que la explicarás de forma oral a tu docente.</span></li></ul>' +
+          '<p class="small muted">Ejemplo: para «Debes calentar agua en un recipiente de vidrio», una mesa completa tiene el mechero Bunsen, el trípode, la rejilla y el vaso de precipitados.</p></section>' +
+          '<button class="btn primary block" id="go">Empezar el reto</button>';
+        $('#go', el).onclick = function () { st.started = true; paint(el); };
+        return;
+      }
+      var sit = R[st.i], ev = st.checked ? evaluarMesa(sit, st.sel) : null;
+      el.innerHTML =
+        '<div class="qhead"><div class="row between small"><b>Situación ' + (st.i + 1) + ' de ' + R.length + '</b><span class="row" style="gap:4px">' + icon('clock') + 'Sin límite de tiempo</span></div>' +
+        '<div class="segments" style="grid-template-columns:repeat(' + R.length + ',1fr)">' + R.map(function (_, k) { return '<i class="' + (k < st.i ? (st.answers[k].completa ? 'ok' : 'bad') : k === st.i ? 'now' : '') + '"></i>'; }).join('') + '</div></div>' +
+        '<section class="qcard"><p class="q" id="qtext">' + esc(sit.texto) + '</p><button class="listen" id="listenS">' + icon('volume') + 'Escuchar situación</button></section>' +
+        '<div class="row between"><h2 class="section-label">Estante · toca para elegir</h2><span class="small muted">' + st.sel.length + ' elegidos</span></div>' +
+        '<div class="shelf" role="group" aria-label="Estante con los 18 instrumentos">' + todos.map(function (id) {
+          var it = inst(id), on = st.sel.indexOf(id) >= 0, cls = '';
+          if (ev) { if (on && ev.sobran.indexOf(id) >= 0) cls = ' is-bad'; else if (on) cls = ' is-ok'; else if (ev.faltan.some(function (g) { return g.indexOf(id) >= 0; })) cls = ' is-missing'; }
+          return '<button class="shelf-item' + cls + '" data-i="' + id + '" aria-pressed="' + on + '"' + (st.checked ? ' disabled' : '') + '><img src="' + it.imagen + '" alt=""><span>' + esc(it.nombre) + '</span>' + (on ? '<i class="tick">' + icon('check') + '</i>' : '') + '</button>';
+        }).join('') + '</div>' +
+        (!st.checked
+          ? '<button class="btn primary block" id="check"' + (st.sel.length ? '' : ' disabled') + '>Comprobar mi mesa</button>'
+          : '<div class="feedback ' + (ev.completa ? 'ok' : 'bad') + '" role="status">' + icon(ev.completa ? 'checkCircle' : 'info') + '<div><b>' + (ev.completa ? '¡Mesa completa!' : (ev.faltan.length ? 'Te faltan instrumentos.' : 'Tu mesa tiene instrumentos que no hacen falta.')) + '</b>' +
+            (ev.bien.length ? '<p class="fb-h">Elegiste bien</p><ul class="fb">' + ev.bien.map(function (id) { return '<li><b>' + esc(inst(id).nombre) + ':</b> ' + esc(porque(sit, id)) + '</li>'; }).join('') + '</ul>' : '') +
+            (ev.faltan.length ? '<p class="fb-h">Te faltó</p><ul class="fb">' + ev.faltan.map(function (g) { return '<li><b>' + g.map(function (id) { return esc(inst(id).nombre); }).join(' o ') + ':</b> ' + esc(porque(sit, g[0])) + '</li>'; }).join('') + '</ul>' : '') +
+            (ev.sobran.length ? '<p class="fb-h">No hacía falta</p><ul class="fb">' + ev.sobran.map(function (id) { return '<li><b>' + esc(inst(id).nombre) + ':</b> ' + esc(porque(sit, id)) + '</li>'; }).join('') + '</ul>' : '') + '</div></div>' +
+            (ev.completa ? '' : '<button class="btn outline block" id="fix">' + icon('rotate') + 'Corregir mi mesa</button>') +
+            '<section class="card stack"><label class="h3" for="just">¿Por qué elegiste estos instrumentos?</label>' +
+            '<textarea id="just" rows="3" placeholder="Ej.: Elegí la probeta porque tiene escala en mililitros y mide con precisión.">' + esc(st.just) + '</textarea>' +
+            '<label class="check-line"><input type="checkbox" id="oral"' + (st.oral ? ' checked' : '') + '> Prefiero explicarlo de forma oral a mi docente</label></section>' +
+            '<button class="btn primary block" id="nextS"' + (st.just.trim().length >= 10 || st.oral ? '' : ' disabled') + '>' + (st.i < R.length - 1 ? 'Siguiente situación' : 'Terminar el reto') + icon('next') + '</button>');
+      $('#listenS', el).onclick = function () { Voice.speak(sit.texto); };
+      $$('[data-i]', el).forEach(function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-i'), k = st.sel.indexOf(id);
+          if (k >= 0) st.sel.splice(k, 1); else st.sel.push(id);
+          var y = $('#view').scrollTop; paint(el); $('#view').scrollTop = y;
+        };
+      });
+      var c = $('#check', el); if (c) c.onclick = function () { st.checked = true; st.intentos++; paint(el); var f = $('.feedback', el); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+      var fx = $('#fix', el); if (fx) fx.onclick = function () { st.checked = false; paint(el); };
+      var j = $('#just', el), nb = $('#nextS', el);
+      if (j) j.oninput = function () { st.just = j.value; nb.disabled = !(st.just.trim().length >= 10 || st.oral); };
+      var o = $('#oral', el); if (o) o.onchange = function () { st.oral = o.checked; nb.disabled = !(st.just.trim().length >= 10 || st.oral); };
+      if (nb) nb.onclick = function () {
+        var r = evaluarMesa(sit, st.sel);
+        st.answers.push({ id: sit.id, elegidos: st.sel.slice(), completa: r.completa, faltan: r.faltan.map(function (g) { return g[0]; }), sobran: r.sobran, intentos: st.intentos, justificacion: st.just.trim(), oral: st.oral });
+        if (st.i < R.length - 1) { st.i++; st.sel = []; st.checked = false; st.intentos = 0; st.just = ''; st.oral = false; paint(el); window.scrollTo(0, 0); $('#view').scrollTop = 0; }
+        else { S.retoFinal = { respuestas: st.answers, fecha: Date.now() }; save(); go('/reto-final/resultado'); }
+      };
+    }
+    return {
+      title: 'Arma tu mesa de trabajo', eyebrow: 'Reto final · OE3 · OE5', back: '/evaluacion', close: true, nav: false,
+      speak: function () { return st.started ? R[st.i].texto + ' Toca en el estante los instrumentos que usarías.' : $('#view').innerText; },
+      html: '<div id="reto" class="stack" style="gap:14px"></div>',
+      mount: function (el) { paint($('#reto', el)); }
+    };
+  }
+
+  function rubricaHTML() {
+    return '<div class="table-wrap"><table class="cuadro rubrica"><thead><tr><th>Criterio</th><th>Superior</th><th>Alto</th><th>Básico</th><th>Bajo</th></tr></thead><tbody>' +
+      D.RUBRICA.map(function (r) { return '<tr><th>' + esc(r.criterio) + '</th><td>' + esc(r.superior) + '</td><td>' + esc(r.alto) + '</td><td>' + esc(r.basico) + '</td><td>' + esc(r.bajo) + '</td></tr>'; }).join('') +
+      '</tbody></table></div>';
+  }
+  function viewRetoResultado() {
+    var rf = S.retoFinal;
+    if (!rf) return null;
+    var R = D.RETO_FINAL.situaciones, comp = rf.respuestas.filter(function (a) { return a.completa; }).length;
+    return {
+      title: 'Resultado del reto final', eyebrow: 'Arma tu mesa de trabajo', back: '/evaluacion', close: true, navKey: 'inicio',
+      speak: function () { return 'Completaste el reto final. Armaste ' + comp + ' de ' + R.length + ' mesas completas en tu último intento. Muestra esta pantalla a tu docente.'; },
+      html:
+        '<section class="award"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#e08a00') + '</svg><div><small>¡Reto final completado!</small><strong>Laboratorista Orbita</strong><span class="muted small">' + comp + ' de ' + R.length + ' mesas completas</span></div></section>' +
+        '<div class="banner">' + icon('clipboard') + '<p>Muestra esta pantalla a tu docente o toma una captura. Tu docente valora el reto con la rúbrica de abajo, junto con tu explicación.</p></div>' +
+        rf.respuestas.map(function (a, k) {
+          var sit = R.filter(function (x) { return x.id === a.id; })[0];
+          return '<section class="card stack" style="gap:8px"><div class="row between"><strong>Situación ' + (k + 1) + '</strong>' + (a.completa ? '<span class="chip ok">' + icon('checkCircle') + 'Completa</span>' : '<span class="chip amber">' + icon('rotate') + 'Parcial</span>') + '</div>' +
+            '<p class="small">' + esc(sit.texto) + '</p>' +
+            '<div class="minis">' + a.elegidos.map(function (id) { return '<span class="mini' + (a.sobran.indexOf(id) >= 0 ? ' bad' : '') + '"><img src="' + inst(id).imagen + '" alt="">' + esc(inst(id).nombre) + '</span>'; }).join('') + '</div>' +
+            (a.faltan.length ? '<p class="small bad-text">Faltó: ' + a.faltan.map(function (id) { return esc(inst(id).nombre); }).join(', ') + '</p>' : '') +
+            '<p class="small"><b>Justificación:</b> ' + (a.justificacion ? esc(a.justificacion) : '<i>La explicará de forma oral.</i>') + (a.justificacion && a.oral ? ' <i>(también la explicará de forma oral)</i>' : '') + '</p>' +
+            '<p class="small muted">Comprobaciones: ' + a.intentos + '</p></section>';
+        }).join('') +
+        '<details class="card"><summary class="h3">Rúbrica del reto final</summary>' + rubricaHTML() + '</details>' +
+        '<div class="btn-row"><a class="btn outline" href="#/actividad/mesa">' + icon('rotate') + 'Repetir</a><a class="btn primary" href="#/actividad/explicalo">Explícalo con tus palabras' + icon('next') + '</a></div>'
+    };
+  }
+
+  /* Explícalo con tus palabras (cierre en clase) */
+  function viewExplicalo() {
+    var prev = S.explicalo || {};
+    var st = { id: prev.instrumento || null, formato: prev.formato || 'oral', texto: prev.texto || '', checks: prev.checks || {} };
+    var PASOS = [
+      { id: 'nombre', t: 'Di o escribe su nombre completo.' },
+      { id: 'caract', t: 'Describe al menos dos características: forma, material, partes o si tiene escala.' },
+      { id: 'uso', t: 'Explica para qué sirve en el laboratorio.' },
+      { id: 'cuidado', t: 'Menciona un cuidado al usarlo.' }
+    ];
+    function paint(el) {
+      var it = st.id ? inst(st.id) : null;
+      el.innerHTML =
+        '<div class="goal">' + icon('bulb') + '<p>Escoge uno de los instrumentos trabajados y explícalo a tu grupo: su nombre, sus características y su uso. Tú eliges cómo hacerlo.</p></div>' +
+        '<section class="stack"><h2 class="section-label">1 · Escoge un instrumento</h2><div class="shelf small-shelf">' + Object.keys(D.INSTRUMENTOS).map(function (id) {
+          var x = inst(id), on = st.id === id;
+          return '<button class="shelf-item" data-i="' + id + '" aria-pressed="' + on + '"><img src="' + x.imagen + '" alt=""><span>' + esc(x.nombre) + '</span>' + (on ? '<i class="tick">' + icon('check') + '</i>' : '') + '</button>';
+        }).join('') + '</div></section>' +
+        (it ? '<section class="stack"><h2 class="section-label">2 · ¿Cómo lo vas a presentar?</h2><span class="seg wide" role="group">' +
+          [['oral', 'Oral'], ['escrito', 'Escrito'], ['dibujo', 'Dibujo rotulado']].map(function (f) { return '<button data-f="' + f[0] + '" aria-pressed="' + (st.formato === f[0]) + '">' + f[1] + '</button>'; }).join('') + '</span></section>' +
+          '<section class="card stack"><h2 class="h3">3 · Prepara tu explicación de ' + esc(it.nombre.toLowerCase()) + '</h2><ul class="missions">' + PASOS.map(function (p) {
+            return '<li class="' + (st.checks[p.id] ? 'ok' : '') + '"><button class="check-btn" data-c="' + p.id + '" aria-pressed="' + !!st.checks[p.id] + '"><span class="n">' + icon(st.checks[p.id] ? 'check' : 'pencil') + '</span><span>' + esc(p.t) + '</span></button></li>';
+          }).join('') + '</ul>' +
+          (st.formato === 'escrito' ? '<label class="small muted" for="txt">Escribe aquí tu explicación (se guarda solo en este celular):</label><textarea id="txt" rows="5" placeholder="El ' + esc(it.nombre.toLowerCase()) + ' es…">' + esc(st.texto) + '</textarea>' : '') +
+          (st.formato === 'dibujo' ? '<p>Dibuja el instrumento en tu cuaderno y rotula sus partes con flechas. Partes para rotular:</p><ul class="parts">' + it.partes.map(function (p) { return '<li><span class="n">' + p.n + '</span><span>' + esc(p.nombre) + '</span></li>'; }).join('') + '</ul>' : '') +
+          (st.formato === 'oral' ? '<p>Practica en voz alta antes de presentar. Si quieres, escucha primero la ficha para recordar.</p><button class="btn outline" id="oir">' + icon('volume') + 'Escuchar la ficha</button>' : '') +
+          '<a class="small" href="#/ficha/' + it.id + '">' + icon('book') + ' Repasar la ficha de ' + esc(it.nombre.toLowerCase()) + '</a></section>' +
+          '<button class="btn primary block" id="listo">Listo para presentar</button>' : '') +
+        '<details class="card"><summary class="h3">Qué valorará tu docente</summary><p class="small muted">Se valora el contenido de tu explicación, no el formato que elijas.</p>' + rubricaHTML() + '</details>';
+      $$('[data-i]', el).forEach(function (b) { b.onclick = function () { st.id = b.getAttribute('data-i'); paint(el); var s2 = $('[data-f]', el); if (s2) s2.scrollIntoView({ behavior: 'smooth', block: 'center' }); }; });
+      $$('[data-f]', el).forEach(function (b) { b.onclick = function () { st.formato = b.getAttribute('data-f'); paint(el); }; });
+      $$('[data-c]', el).forEach(function (b) { b.onclick = function () { var c = b.getAttribute('data-c'); st.checks[c] = !st.checks[c]; paint(el); }; });
+      var t = $('#txt', el); if (t) t.oninput = function () { st.texto = t.value; };
+      var oi = $('#oir', el); if (oi) oi.onclick = function () { Voice.speak(it.nombre + '. ' + it.caracteristicas + ' Uso: ' + it.uso + ' Cuidado: ' + it.cuidado); };
+      var l = $('#listo', el); if (l) l.onclick = function () {
+        S.explicalo = { instrumento: st.id, formato: st.formato, texto: st.texto, checks: st.checks, fecha: Date.now() }; save();
+        toast('¡Listo! Tu explicación quedó registrada en Mis logros.'); go('/logros');
+      };
+    }
+    return {
+      title: 'Explícalo con tus palabras', eyebrow: 'Cierre en clase · OE2 · OE3 · OE5', back: '/actividades', navKey: 'inicio',
+      html: '<div id="exp" class="stack" style="gap:14px"></div>',
+      mount: function (el) { paint($('#exp', el)); }
+    };
+  }
   /* Motor de cuestionarios (diagnóstica y mini-retos) */
   function viewQuiz(kind, mid) {
     var def = kind === 'diagnostica' ? D.DIAGNOSTICA : D.MINIRETOS[mid];
     if (!def) return null;
-    if (kind === 'mini' && !modProgress(modulo(mid)).all) {
+    if (kind === 'mini' && !miniAbierto(mid)) {
       return {
         title: 'Mini-reto', back: '/modulo/' + mid, navKey: 'modulos',
-        html: '<div class="banner">' + icon('lock') + '<p>El mini-reto se activa cuando exploras todas las fichas del módulo. Así la evaluación llega después de la exploración.</p></div><a class="btn primary block" href="#/modulo/' + mid + '">Ir al módulo ' + mid + '</a>'
+        html: '<div class="banner">' + icon('lock') + '<p>El mini-reto se activa cuando ' + (modulo(mid).lecciones ? 'completas las 3 lecciones del módulo' : 'exploras todas las fichas del módulo') + '. Así la evaluación llega después de la exploración.</p></div><a class="btn primary block" href="#/modulo/' + mid + '">Ir al módulo ' + mid + '</a>'
       };
     }
     var Q = def.preguntas, st = { i: 0, sel: null, checked: false, answers: [] };
@@ -1043,7 +1434,7 @@
           var lab = optLabel(o);
           return '<button class="opt' + cls + '" role="radio" aria-checked="' + (st.sel === o.id) + '" data-o="' + o.id + '"' + (st.checked ? ' disabled' : '') + '>' +
             '<span class="letter">' + LETTERS(k) + '</span><span class="tick">' + (st.sel === o.id ? icon('check') : '') + '</span>' +
-            (illustrated ? '<img src="' + inst(o.id).imagen + '" alt="">' : '') + '<span>' + esc(lab) + '</span></button>';
+            (illustrated && inst(o.id) ? '<img src="' + inst(o.id).imagen + '" alt="">' : '') + '<span>' + esc(lab) + '</span></button>';
         }).join('') + '</div>' +
         (st.checked && def.califica ? '<div class="feedback ' + (isOk ? 'ok' : 'bad') + '" role="status">' + icon(isOk ? 'checkCircle' : 'xCircle') + '<div><b>' + (isOk ? '¡Correcto!' : 'Respuesta incorrecta.') + '</b><p>' + esc(isOk ? q.ok : (q.no && q.no[st.sel]) || q.ok) + '</p></div></div>' : '') +
         (st.checked || !def.califica
@@ -1104,9 +1495,13 @@
         '<div class="qdots">' + last.respuestas.map(function (r, k) { return '<span><i class="' + (r.ok ? 'ok' : 'bad') + '">' + icon(r.ok ? 'check' : 'x') + '</i>P' + (k + 1) + '</span>'; }).join('') + '</div></section>' +
         wrong.map(function (r) {
           var q = def.preguntas[r.q], chosen = inst(r.elegida);
+          var op = q.opciones.filter(function (o) { return o.id === r.elegida; })[0];
+          var elegida = chosen ? chosen.nombre : (op && op.label) || r.elegida;
+          var link = q.repaso ? '<a href="#' + q.repaso + '">' + icon('book') + 'Repasar: ' + esc(q.repasoNombre || 'lección') + '</a>'
+            : '<a href="#/ficha/' + q.correcta + '">' + icon('book') + 'Repasa la ficha: ' + esc(inst(q.correcta).nombre) + '</a>' +
+              (chosen && chosen.id !== q.correcta ? '<a href="#/ficha/' + chosen.id + '">' + icon('book') + 'Compárala con: ' + esc(chosen.nombre) + '</a>' : '');
           return '<section class="review"><h3>' + icon('xCircle') + 'Pregunta ' + (r.q + 1) + ': para repasar</h3>' +
-            '<p>Elegiste ' + esc(chosen ? chosen.nombre : r.elegida) + '. ' + esc((q.no && q.no[r.elegida]) || q.ok) + '</p>' +
-            '<a href="#/ficha/' + (chosen && chosen.modelo ? chosen.id : q.correcta) + '">' + icon('book') + 'Ver ficha: ' + esc(chosen && chosen.modelo ? chosen.nombre : inst(q.correcta).nombre) + '</a></section>';
+            '<p>Elegiste «' + esc(elegida) + '». ' + esc((q.no && q.no[r.elegida]) || q.ok) + '</p>' + link + '</section>';
         }).join('') +
         '<section class="stack"><h2 class="h3">¿Cómo te fue en este módulo?</h2><div class="semaforo" role="group" aria-label="Autoevaluación">' +
         [['claro', '#2fa866', 'Lo tengo claro'], ['dudas', '#f0a92c', 'Tengo algunas dudas'], ['repasar', '#e05a5a', 'Necesito repasar']].map(function (s) {
@@ -1114,7 +1509,7 @@
         }).join('') + '</div></section>' +
         (md.intentos.length > 1 ? '<p class="small muted">Intento ' + md.intentos.length + '. Tu docente ve el primer intento (' + md.intentos[0].aciertos + ' de 5); los siguientes son de práctica.</p>' : '<p class="small muted">Este primer intento queda visible para tu docente en Mis logros. Los siguientes intentos son de práctica.</p>') +
         '<div class="btn-row"><a class="btn outline" href="#/evaluacion/minireto/' + mid + '">' + icon('rotate') + 'Repetir</a>' +
-        '<a class="btn primary" href="#/' + (nextMod ? 'modulo/' + nextMod.id : 'logros') + '">' + (nextMod ? 'Siguiente módulo' : 'Mis logros') + icon('next') + '</a></div>',
+        '<a class="btn primary" href="#/' + (nextMod ? 'modulo/' + nextMod.id : (retoAbierto() ? 'actividad/mesa' : 'logros')) + '">' + (nextMod ? 'Siguiente módulo' : (retoAbierto() ? 'Ir al reto final' : 'Mis logros')) + icon('next') + '</a></div>',
       mount: function (el) {
         $$('[data-s]', el).forEach(function (b) {
           b.onclick = function () {
@@ -1132,7 +1527,7 @@
     var Q = D.DIAGNOSTICA.preguntas, r = S.diag.respuestas;
     var know = [], learn = [];
     r.forEach(function (a) {
-      var q = Q[a.q], label = q.instrumento ? inst(q.instrumento).nombre : (q.correcta === 'vidrio' ? 'Material del laboratorio' : inst(q.correcta).nombre);
+      var q = Q[a.q], label = q.instrumento ? inst(q.instrumento).nombre : (inst(q.correcta) ? inst(q.correcta).nombre : 'Material del laboratorio');
       (a.ok ? know : learn).push(label);
     });
     return {
@@ -1147,46 +1542,87 @@
 
   /* 9 · Mis logros */
   function viewLogros() {
-    var md = miniData(2), qs = S.actividades['quien-soy'], cc = S.actividades['cada-cosa'], pa = S.actividades.parecidos;
     var semLabel = { claro: 'Lo tengo claro', dudas: 'Tengo algunas dudas', repasar: 'Necesito repasar' };
     var diagOk = S.diag ? S.diag.respuestas.filter(function (a) { return a.ok; }).length : null;
+    var pa = S.actividades.parecidos, rf = S.retoFinal, ex = S.explicalo;
+    var filas = [['Diagnóstica', S.diag ? diagOk + ' de 8 reconocidos' : 'Pendiente'],
+      ['Lecciones del módulo 1', modProgress(modulo(1)).done + ' de 3'],
+      ['Instrumentos explorados', totalExplored() + ' de 18']];
+    D.MODULOS.forEach(function (m) {
+      var md = miniData(m.id);
+      filas.push(['Mini-reto ' + m.id + ' · primer intento', md ? md.intentos[0].aciertos + ' de 5' + (md.intentos.length > 1 ? ' (' + md.intentos.length + ' intentos)' : '') : 'Pendiente']);
+    });
+    [2, 3, 4].forEach(function (mid) { var q = actData('quien-soy', mid); filas.push(['¿Quién soy? módulo ' + mid + ' · mejor', q ? q.mejor + ' de 24' : 'Pendiente']); });
+    [2, 4].forEach(function (mid) { var c = actData('cada-cosa', mid); filas.push(['Cada cosa en su lugar · módulo ' + mid, c ? 'Completada' + (c.errores ? ' (' + c.errores + ' por corregir)' : ' sin errores') : 'Pendiente']); });
+    filas.push(['Parecidos pero diferentes', pa ? Object.keys(pa.parejas).length + ' de ' + D.PAREJAS.length + ' parejas' : 'Pendiente']);
+    filas.push(['Reto final', rf ? rf.respuestas.filter(function (a) { return a.completa; }).length + ' de ' + rf.respuestas.length + ' mesas completas' : 'Pendiente']);
+    filas.push(['Explícalo con tus palabras', ex ? inst(ex.instrumento).nombre + ' · ' + { oral: 'oral', escrito: 'escrito', dibujo: 'dibujo rotulado' }[ex.formato] : 'Pendiente']);
+    D.MODULOS.forEach(function (m) { filas.push(['Autoevaluación módulo ' + m.id, S.semaforo[m.id] ? semLabel[S.semaforo[m.id]] : 'Pendiente']); });
     return {
       title: 'Mis logros', back: '/menu', navKey: 'logros',
       html:
         '<section class="stack"><h2 class="section-label">Insignias</h2><div class="badges">' + D.MODULOS.map(function (m) {
-          var on = D.MINIRETOS[m.id] && hasBadge(m.id);
+          var on = hasBadge(m.id);
           return '<div class="badge-card' + (on ? '' : ' off') + '"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#3a4cca') + '</svg><strong>' + esc(m.insignia) + '</strong><small>' + (on ? 'Lograda' : 'Módulo ' + m.id) + '</small></div>';
-        }).join('') + '</div><p class="small muted">Las insignias se guardan solo en este celular y no se comparan con las de otros estudiantes.</p></section>' +
+        }).join('') +
+        '<div class="badge-card' + (rf ? '' : ' off') + '"><svg viewBox="0 0 64 64" aria-hidden="true">' + medal('#e08a00') + '</svg><strong>Laboratorista Orbita</strong><small>' + (rf ? 'Lograda' : 'Reto final') + '</small></div>' +
+        '</div><p class="small muted">Las insignias se guardan solo en este celular y no se comparan con las de otros estudiantes.</p></section>' +
         '<section class="card stack"><h2 class="h3">Progreso por módulo</h2>' + D.MODULOS.map(function (m) {
           var pr = modProgress(m);
-          return '<div class="mod-progress"><span>Módulo ' + m.id + ' · ' + esc(m.corto) + '</span><span class="small muted">' + (m.estado === 'disponible' ? pr.done + ' de ' + pr.total : 'Pronto') + '</span><div class="bar"><i style="width:' + (pr.total ? pr.done / pr.total * 100 : 0) + '%"></i></div></div>';
+          return '<div class="mod-progress"><span>Módulo ' + m.id + ' · ' + esc(m.corto) + '</span><span class="small muted">' + pr.done + ' de ' + pr.total + ' ' + pr.unidad + '</span><div class="bar"><i style="width:' + (pr.total ? pr.done / pr.total * 100 : 0) + '%"></i></div></div>';
         }).join('') + '</section>' +
         '<section class="card stack"><div class="row between"><h2 class="h3">Resumen para el docente</h2>' + icon('clipboard') + '</div>' +
-        '<p class="small muted">Muestra esta pantalla en clase o toma una captura para compartirla.</p>' +
-        '<dl class="kv">' +
-        '<dt>Diagnóstica</dt><dd>' + (S.diag ? diagOk + ' de 8 reconocidos' : 'Pendiente') + '</dd>' +
-        '<dt>Instrumentos explorados</dt><dd>' + totalExplored() + ' de 18</dd>' +
-        '<dt>Mini-reto 2 · primer intento</dt><dd>' + (md ? md.intentos[0].aciertos + ' de 5' : 'Pendiente') + '</dd>' +
-        '<dt>Mini-reto 2 · intentos</dt><dd>' + (md ? md.intentos.length : 0) + '</dd>' +
-        '<dt>¿Quién soy? · mejor puntaje</dt><dd>' + (qs ? qs.mejor + ' de 24' : 'Pendiente') + '</dd>' +
-        '<dt>Cada cosa en su lugar</dt><dd>' + (cc ? 'Completada' : 'Pendiente') + '</dd>' +
-        '<dt>Parecidos pero diferentes</dt><dd>' + (pa ? Object.keys(pa.parejas).length + ' de 2 parejas' : 'Pendiente') + '</dd>' +
-        '<dt>Autoevaluación módulo 2</dt><dd>' + (S.semaforo[2] ? semLabel[S.semaforo[2]] : 'Pendiente') + '</dd>' +
-        '</dl></section>'
+        '<p class="small muted">Muestra esta pantalla en clase o toma una captura para compartirla. Cuenta el primer intento de cada mini-reto; los siguientes son de práctica.</p>' +
+        '<dl class="kv">' + filas.map(function (f) { return '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>'; }).join('') + '</dl></section>'
     };
   }
 
   /* 10 · Recursos */
+  var FICHAS = {
+    1: ['El laboratorio, los materiales, las normas de seguridad, el visor 3D y los 18 instrumentos', 7],
+    2: ['Los 6 instrumentos con sus partes, cómo leer el volumen y práctica para imprimir', 7],
+    3: ['Los 6 instrumentos con sus partes, el montaje para calentar y práctica para imprimir', 6],
+    4: ['Los 6 instrumentos con sus partes, cómo pesar un sólido y práctica para imprimir', 6]
+  };
   function viewRecursos() {
     return {
       title: 'Recursos', back: '/menu', navKey: 'inicio',
       html:
-        '<section class="stack"><h2 class="section-label">Fichas en PDF</h2>' +
-        '<a class="item" href="recursos/Orbita_Ficha_Modulo_2.pdf" target="_blank" rel="noopener"><span class="thumb c-teal">' + icon('file') + '</span><span><strong>Ficha del módulo 2</strong><small>Los 6 instrumentos en una página · para repasar sin pantalla, compartir por Bluetooth o imprimir</small></span><span class="state viewing">PDF</span></a>' +
-        [1, 3, 4].map(function (n) { return '<div class="item locked"><span class="thumb">' + icon('file') + '</span><span><strong>Ficha del módulo ' + n + '</strong><small>En construcción</small></span><span></span></div>'; }).join('') + '</section>' +
+        '<section class="stack"><h2 class="section-label">Fichas en PDF</h2><p class="small muted">Para repasar sin pantalla, compartir por Bluetooth o imprimir. Cada ficha termina con una página de práctica y sus respuestas.</p>' + D.MODULOS.map(function (m) {
+          var f = FICHAS[m.id];
+          return '<a class="item" href="recursos/Orbita_Ficha_Modulo_' + m.id + '.pdf" target="_blank" rel="noopener"><span class="thumb cover"><img src="img/fichas/ficha-m' + m.id + '.webp" alt=""></span><span><strong>Ficha del módulo ' + m.id + '</strong><small>' +
+            f[0] + ' · ' + f[1] + ' páginas</small></span><span class="state viewing">PDF</span></a>';
+        }).join('') + '</section>' +
         '<section class="stack"><h2 class="section-label">Para aprender más</h2>' +
         '<a class="item" href="#/glosario"><span class="thumb c-primary">' + icon('book') + '</span><span><strong>Glosario con audio</strong><small>' + D.GLOSARIO.length + ' términos explicados con palabras sencillas</small></span><span class="go">' + icon('next') + '</span></a>' +
-        '<a class="item" href="#/ayuda"><span class="thumb c-slate">' + icon('settings') + '</span><span><strong>Ayuda y accesibilidad</strong><small>Tamaño del texto, contraste, voz y uso sin conexión</small></span><span class="go">' + icon('next') + '</span></a></section>'
+        '<a class="item" href="#/ayuda"><span class="thumb c-slate">' + icon('settings') + '</span><span><strong>Ayuda y accesibilidad</strong><small>Tamaño del texto, contraste, voz y uso sin conexión</small></span><span class="go">' + icon('next') + '</span></a></section>' +
+        '<section class="stack"><h2 class="section-label">Para el docente</h2>' +
+        '<a class="item" href="#/docente"><span class="thumb c-violet">' + icon('teacher') + '</span><span><strong>Guía para el docente</strong><small>Secuencia de 5 semanas, momentos de evaluación, rúbrica y lista de chequeo</small></span><span class="go">' + icon('next') + '</span></a></section>'
+    };
+  }
+
+  function viewDocente() {
+    var semanas = [
+      ['1', 'Bienvenida al laboratorio', 'Tutorial, lecciones y recorrido libre por el catálogo', 'Diagnóstica ¿Qué sé del laboratorio? y mini-reto 1'],
+      ['2', 'Contener y medir líquidos', 'Explora y descubre, ¿Quién soy? y Cada cosa en su lugar (2 bandejas)', 'Mini-reto 2 y autoevaluación'],
+      ['3', 'Calentar, sostener y sujetar', 'Explora y descubre, ¿Quién soy? y Parecidos pero diferentes en parejas', 'Mini-reto 3, autoevaluación y lista de chequeo'],
+      ['4', 'Triturar, separar, mezclar y pesar', 'Explora y descubre, ¿Quién soy? y Cada cosa en su lugar (18 instrumentos)', 'Mini-reto 4 y autoevaluación'],
+      ['5', 'Cierre', 'Arma tu mesa de trabajo y Explícalo con tus palabras', 'Rúbrica del reto final y autoevaluación final']
+    ];
+    return {
+      title: 'Guía para el docente', eyebrow: 'Orbita · Ciencias Naturales, grado noveno', back: '/recursos', navKey: 'inicio',
+      html:
+        '<p class="lead">Orbita acompaña la explicación del docente: los estudiantes exploran, practican y se evalúan en el celular, y la discusión se hace en la puesta en común al final de cada sesión.</p>' +
+        '<section class="card stack"><h2 class="h3">Secuencia sugerida (una sesión de 2 horas por semana)</h2><div class="table-wrap"><table class="cuadro"><thead><tr><th>Semana</th><th>Módulo</th><th>Actividades clave</th><th>Evaluación</th></tr></thead><tbody>' +
+        semanas.map(function (s) { return '<tr><th>' + s[0] + '</th><td>' + esc(s[1]) + '</td><td>' + esc(s[2]) + '</td><td>' + esc(s[3]) + '</td></tr>'; }).join('') + '</tbody></table></div></section>' +
+        '<section class="card stack"><h2 class="h3">Cómo recoger los resultados</h2><ul class="parts">' +
+        '<li><span class="n">1</span><span>Orbita no usa cuentas: cada estudiante muestra la pantalla <b>Mis logros</b> o envía una captura por el medio que use el curso.</span></li>' +
+        '<li><span class="n">2</span><span>En cada mini-reto cuenta el primer intento; el aprendizaje se considera alcanzado con <b>4 de 5</b> aciertos. Los demás intentos son de práctica.</span></li>' +
+        '<li><span class="n">3</span><span>El reto final muestra las mesas armadas y las justificaciones del estudiante para valorarlas con la rúbrica.</span></li>' +
+        '<li><span class="n">4</span><span>Para demostraciones, el <b>modo docente</b> (en Ayuda) abre todos los mini-retos y el reto final sin explorar antes.</span></li></ul></section>' +
+        '<section class="card stack"><h2 class="h3">Lista de chequeo · Parecidos pero diferentes</h2><p class="small muted">Marca durante la actividad en parejas del módulo 3 (las marcas no se guardan).</p><ul class="checklist">' +
+        D.CHEQUEO_PARECIDOS.map(function (c, i) { return '<li><label><input type="checkbox" id="ch' + i + '"> ' + esc(c) + '</label></li>'; }).join('') + '</ul></section>' +
+        '<section class="card stack"><h2 class="h3">Rúbrica del reto final y la explicación de cierre</h2><p class="small muted">Niveles de desempeño de la escala nacional (Decreto 1290 de 2009). Un desempeño básico, alto o superior en todos los criterios indica que se alcanzó el aprendizaje esperado.</p>' + rubricaHTML() + '</section>'
     };
   }
   function viewGlosario() {
@@ -1218,10 +1654,13 @@
         '<div class="setting"><span><strong>Vista de los modelos</strong><small>' + (webglOK ? 'Usa fotos si tu celular se pone lento' : 'Tu celular no muestra 3D: se usan fotos desde 8 ángulos') + '</small></span>' + (webglOK ? seg('vista', [['3d', '3D'], ['fotos', 'Fotos']], S.ajustes.vista) : '') + '</div>' +
         '</section>' +
         '<section class="card stack"><h2 class="h3">Uso sin conexión</h2><div id="offStatus" class="stack" style="gap:10px"></div></section>' +
+        '<section class="card"><h2 class="h3">Para el docente</h2>' +
+        '<div class="setting"><span><strong>Modo docente</strong><small>Abre los mini-retos y el reto final sin explorar antes. Útil para demostraciones en clase.</small></span><button class="switch" id="docSw" role="switch" aria-checked="' + !!S.ajustes.docente + '" aria-label="Modo docente"></button></div>' +
+        '<a class="item" href="#/docente" style="margin-top:8px"><span class="thumb c-violet">' + icon('teacher') + '</span><span><strong>Guía para el docente</strong><small>Secuencia, evaluación, rúbrica y lista de chequeo</small></span><span class="go">' + icon('next') + '</span></a></section>' +
         '<section class="card stack"><h2 class="h3">Mi progreso</h2><p class="small muted">Tu avance se guarda solo en este celular. Orbita no pide cuentas ni datos personales.</p>' +
         '<button class="btn outline" id="resetBtn" style="color:var(--bad);border-color:var(--bad)">' + icon('trash') + 'Borrar mi progreso</button></section>' +
         '<section class="card stack"><div class="row">' + logo('sm') + '<h2 class="h3">Acerca de Orbita</h2></div>' +
-        '<p class="credits">Ambiente Educativo Tecnológico para el reconocimiento de instrumentos y materiales de laboratorio de química. Primer avance del desarrollo (versión 0.1).</p>' +
+        '<p class="credits">Ambiente Educativo Tecnológico para el reconocimiento de instrumentos y materiales de laboratorio de química. Versión 1.0: cuatro módulos, 18 instrumentos en 3D, actividades, evaluaciones y reto final.</p>' +
         '<p class="credits">Camilo Andrés Soto Germán, Juan Daniel Lozano Vergara e Iván Ramiro Ramos Petro · Licenciatura en Informática, Universidad de Córdoba · 2026.</p>' +
         '<p class="credits">Modelos 3D provisionales generados por el equipo. Visor: model-viewer (Apache 2.0). Íconos: Lucide (ISC). Tipografía: Nunito (OFL).</p></section>',
       mount: function (el) {
@@ -1230,8 +1669,9 @@
         $$('[data-vel]', el).forEach(function (b) { b.onclick = function () { S.ajustes.velocidad = Number(b.getAttribute('data-vel')); save(); $$('[data-vel]', el).forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); }); Voice.speak('Así suena la lectura en voz alta.'); }; });
         $$('[data-vista]', el).forEach(function (b) { b.onclick = function () { S.ajustes.vista = b.getAttribute('data-vista'); save(); $$('[data-vista]', el).forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); }); }; });
         $('#contrast', el).onclick = function () { S.ajustes.contraste = !S.ajustes.contraste; save(); applySettings(); this.setAttribute('aria-checked', String(S.ajustes.contraste)); };
+        $('#docSw', el).onclick = function () { S.ajustes.docente = !S.ajustes.docente; save(); this.setAttribute('aria-checked', String(S.ajustes.docente)); toast(S.ajustes.docente ? 'Modo docente activado: mini-retos y reto final abiertos.' : 'Modo docente desactivado.'); };
         $('#resetBtn', el).onclick = function () {
-          confirmSheet('¿Borrar tu progreso?', 'Se borrarán las fichas exploradas, las insignias, los resultados y la autoevaluación de este celular. Los ajustes de accesibilidad se mantienen.', 'Sí, borrar').then(function (yes) {
+          confirmSheet('¿Borrar tu progreso?', 'Se borrarán las lecciones y fichas exploradas, las insignias, los resultados, el reto final y la autoevaluación de este celular. Los ajustes de accesibilidad se mantienen.', 'Sí, borrar').then(function (yes) {
             if (!yes) return;
             var aj = S.ajustes; S = fresh(); S.ajustes = aj; S.tutorialVisto = true; save(); toast('Progreso borrado.'); render();
           });
@@ -1246,17 +1686,24 @@
       ? '<div class="status-line ok"><span class="dot"></span>La aplicación está guardada en este celular.</div>'
       : Offline.state === 'wait' ? '<div class="status-line wait"><span class="dot"></span>Guardando la aplicación en este celular…</div>'
         : '<div class="status-line"><span class="dot"></span>Esta versión se usa en línea. Instálala desde el sitio publicado para usarla sin conexión.</div>';
-    box.innerHTML = core + '<div id="m2status" class="status-line"><span class="dot"></span>Revisando el módulo 2…</div>';
-    if (!('caches' in window) || Offline.state === 'none') { $('#m2status', box).remove(); return; }
-    Offline.moduleStatus(2).then(function (s) {
-      var line = $('#m2status', box); if (!line) return;
-      if (s === 'ok') { line.className = 'status-line ok'; line.innerHTML = '<span class="dot"></span>Módulo 2 descargado: funciona sin conexión.'; return; }
-      line.outerHTML = '<div class="setting" style="border:0;padding:0"><span><strong>Módulo 2</strong><small>Modelos, fotos y ficha PDF (≈ 1 MB)</small></span><button class="btn outline" id="dlM2">' + icon('download') + 'Descargar</button></div>';
-      $('#dlM2', box).onclick = function () {
-        var b = this; b.disabled = true; b.textContent = 'Descargando…';
-        Offline.downloadModule(2).then(function () { toast('Módulo 2 listo para usar sin conexión.'); paintOffline(box); })
-          .catch(function () { b.disabled = false; b.textContent = 'Reintentar'; toast('No se pudo descargar. Revisa tu conexión e inténtalo de nuevo.'); });
-      };
+    box.innerHTML = core + '<div id="modStatus" class="stack" style="gap:8px"><div class="status-line"><span class="dot"></span>Revisando los módulos…</div></div>';
+    if (!('caches' in window) || Offline.state === 'none') { $('#modStatus', box).remove(); return; }
+    var pesos = { 1: '≈ 0,9 MB', 2: '≈ 1,3 MB', 3: '≈ 1,4 MB', 4: '≈ 1,2 MB' };
+    Promise.all(D.MODULOS.map(function (m) { return Offline.moduleStatus(m.id); })).then(function (sts) {
+      var cont = $('#modStatus', box); if (!cont) return;
+      var faltan = D.MODULOS.filter(function (m, k) { return sts[k] !== 'ok'; });
+      cont.innerHTML = D.MODULOS.map(function (m, k) {
+        if (sts[k] === 'ok') return '<div class="status-line ok"><span class="dot"></span>Módulo ' + m.id + ' descargado: funciona sin conexión.</div>';
+        return '<div class="setting" style="border:0;padding:0"><span><strong>Módulo ' + m.id + ' · ' + esc(m.corto) + '</strong><small>' + (m.lecciones ? 'Lecciones, imágenes y ficha PDF' : 'Modelos, fotos y ficha PDF') + ' (' + pesos[m.id] + ')</small></span><button class="btn outline" data-dl="' + m.id + '">' + icon('download') + 'Descargar</button></div>';
+      }).join('') + (faltan.length > 1 ? '<button class="btn primary" id="dlAll">' + icon('download') + 'Descargar todo (≈ 4,6 MB)</button>' : '');
+      function bajar(ids, btn) {
+        btn.disabled = true; btn.textContent = 'Descargando…';
+        ids.reduce(function (pr, mid) { return pr.then(function () { return Offline.downloadModule(mid); }); }, Promise.resolve())
+          .then(function () { toast(ids.length > 1 ? 'Todos los módulos quedaron listos para usar sin conexión.' : 'Módulo ' + ids[0] + ' listo para usar sin conexión.'); paintOffline(box); })
+          .catch(function () { btn.disabled = false; btn.textContent = 'Reintentar'; toast('No se pudo descargar. Revisa tu conexión e inténtalo de nuevo.'); });
+      }
+      $$('[data-dl]', cont).forEach(function (b) { b.onclick = function () { bajar([Number(b.getAttribute('data-dl'))], b); }; });
+      var all = $('#dlAll', cont); if (all) all.onclick = function () { bajar(faltan.map(function (m) { return m.id; }), all); };
     });
   }
 

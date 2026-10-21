@@ -5,7 +5,7 @@
  *   o con el botón "Descargar" de Ayuda; después funcionan sin conexión.
  * Cambia VERSION cada vez que publiques una actualización.
  */
-const VERSION = 'v0.1.0';
+const VERSION = 'v1.0.1';
 const CORE_CACHE = 'orbita-core-' + VERSION;
 const MODULE_CACHE = 'orbita-modulos-v1';
 const CORE = [
@@ -24,7 +24,11 @@ const CORE = [
   'img/icons/icon-512.png',
   'img/icons/favicon-64.png',
   'img/instrumentos/erlenmeyer.webp',
-  'img/instrumentos/tubo.webp'
+  'img/instrumentos/tubo.webp',
+  'img/fichas/ficha-m1.webp',
+  'img/fichas/ficha-m2.webp',
+  'img/fichas/ficha-m3.webp',
+  'img/fichas/ficha-m4.webp'
 ];
 
 self.addEventListener('install', (event) => {
