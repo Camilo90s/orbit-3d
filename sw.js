@@ -5,7 +5,7 @@
  *   o con el botón "Descargar" de Ayuda; después funcionan sin conexión.
  * Cambia VERSION cada vez que publiques una actualización.
  */
-const VERSION = 'v1.0.1';
+const VERSION = 'v1.0.2';
 const CORE_CACHE = 'orbita-core-' + VERSION;
 const MODULE_CACHE = 'orbita-modulos-v1';
 const CORE = [

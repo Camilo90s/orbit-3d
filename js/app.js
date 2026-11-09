@@ -210,14 +210,14 @@
   var Offline = {
     state: 'none', // none | wait | ready
     init: function () {
-      if (window.ORBITA_DEMO || !('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+      if (window.ORBITA_DEMO || !('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) { precargarVisor(1500); return; }
       Offline.state = 'wait';
       try {
         navigator.serviceWorker.register('sw.js').then(function () {
           return navigator.serviceWorker.ready;
-        }).then(function () { Offline.state = 'ready'; refreshOfflineChip(); })
-          .catch(function () { Offline.state = 'none'; refreshOfflineChip(); });
-      } catch (e) { Offline.state = 'none'; }
+        }).then(function () { Offline.state = 'ready'; refreshOfflineChip(); precargarVisor(400); })
+          .catch(function () { Offline.state = 'none'; refreshOfflineChip(); precargarVisor(1500); });
+      } catch (e) { Offline.state = 'none'; precargarVisor(1500); }
     },
     moduleAssets: function (mid) {
       var m = modulo(mid), list = [];
@@ -325,7 +325,7 @@
     }).join('');
     var mode3d = o.force === 'fotos' ? false : (o.force === '3d' ? webglOK : use3D());
     var body = mode3d
-      ? '<model-viewer src="' + modelSrc(it) + '" poster="' + it.imagen + '" alt="Modelo 3D de ' + esc(o.anon ? 'un instrumento sin nombre' : it.nombre) + '" camera-controls touch-action="pan-y" ' +
+      ? '<model-viewer src="' + modelSrc(it) + '" poster="' + it.imagen + '" style="--poster:url(' + new URL(it.imagen, document.baseURI).href + ')" alt="Modelo 3D de ' + esc(o.anon ? 'un instrumento sin nombre' : it.nombre) + '" camera-controls touch-action="pan-y" ' +
         'auto-rotate auto-rotate-delay="2500" rotation-per-second="18deg" interaction-prompt="none" shadow-intensity="0.7" exposure="1.05" environment-image="neutral" ' +
         'camera-orbit="' + (it.camara || '20deg 75deg auto') + '" loading="eager">' + hot + '</model-viewer>'
       : altHTML(it, o.anon);
@@ -337,7 +337,7 @@
         '<button class="icon-btn" data-v="reset" aria-label="Restablecer la vista">' + icon('reset') + '</button>' : '') +
       '</div>';
     var chip = o.chip === false ? '' : (webglOK
-      ? '<button class="chip mode-chip" data-v="mode" aria-label="Cambiar a ' + (mode3d ? 'vista en fotos' : 'vista 3D') + '">' + icon(mode3d ? 'cube' : 'images') + (mode3d ? 'Vista 3D' : 'Vista en fotos') + '</button>'
+      ? '<button class="chip mode-chip" data-v="mode" aria-label="' + (mode3d ? 'Vista 3D: cambiar a vista en fotos' : 'Vista en fotos: cambiar a vista 3D') + '">' + icon(mode3d ? 'cube' : 'images') + (mode3d ? 'Vista 3D' : 'Vista en fotos') + '</button>'
       : '<span class="chip mode-chip">' + icon('images') + 'Vista en fotos</span>');
     var hint = mode3d && o.hint !== false ? '<span class="hint" data-v="hint">' + icon('hand') + 'Desliza para girar · Pellizca para ampliar</span>' : '';
     return '<div class="viewer-card no-swipe" data-mode="' + (mode3d ? '3d' : 'fotos') + '">' + chip + body + side + hint + '</div>';
@@ -351,15 +351,32 @@
       '<input id="alt-' + it.id + '" type="range" min="0" max="7" step="1" value="0" aria-valuetext="Vista 1 de 8">' +
       '</div>';
   }
+  /* Carga diferida del visor 3D (v1.0.2): la librería model-viewer (≈ 260 KB comprimida) ya no
+   * retrasa la pantalla de inicio; se pide al salir del inicio o al abrir el primer visor. */
+  var mvPedido = false;
+  function ensureModelViewer() {
+    if (mvPedido || (window.customElements && window.customElements.get('model-viewer'))) return;
+    mvPedido = true;
+    var sc = document.createElement('script'); sc.type = 'module'; sc.src = 'vendor/model-viewer.min.js';
+    document.head.appendChild(sc);
+  }
+  /* Con el inicio ya visible, el visor se prepara en segundo plano (desde la caché del service worker
+   * cuando existe), para que la primera ficha abra rápido. No se carga si el estudiante eligió la vista en fotos. */
+  function precargarVisor(ms) {
+    var go = function () { if (use3D()) setTimeout(ensureModelViewer, ms); };
+    if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
+  }
   function mountViewer(card, it, o) {
     o = o || {};
     var mv = $('model-viewer', card);
+    if (mv) ensureModelViewer();
     var hint = $('[data-v="hint"]', card);
     var hideHint = function () { if (hint) hint.remove(); hint = null; };
     if (hint) setTimeout(hideHint, 4500);
     if (mv) {
       mv.addEventListener('camera-change', function (e) { if (e.detail && e.detail.source === 'user-interaction') hideHint(); });
       var zoom = function (f) {
+        if (!mv.getCameraOrbit) return;
         var c = mv.getCameraOrbit();
         mv.cameraOrbit = c.theta + 'rad ' + c.phi + 'rad ' + (c.radius * f) + 'm';
         hideHint();
@@ -367,7 +384,7 @@
       };
       $$('[data-v]', card).forEach(function (b) {
         var v = b.getAttribute('data-v');
-        if (v === 'spin') b.onclick = function () { mv.autoRotate = !mv.autoRotate; b.setAttribute('aria-pressed', mv.autoRotate ? 'true' : 'false'); };
+        if (v === 'spin') b.onclick = function () { mv.autoRotate = !mv.autoRotate; if (mv.autoRotate) mv.autoRotateDelay = 0; b.setAttribute('aria-pressed', mv.autoRotate ? 'true' : 'false'); };
         if (v === 'in') b.onclick = function () { zoom(0.75); };
         if (v === 'out') b.onclick = function () { zoom(1.3); };
         if (v === 'reset') b.onclick = function () { mv.cameraOrbit = it.camara || '20deg 75deg auto'; mv.cameraTarget = 'auto auto auto'; mv.fieldOfView = 'auto'; };
@@ -376,9 +393,33 @@
         if (!o.onCamera || !e.detail || e.detail.source !== 'user-interaction') return;
         o.onCamera(mv.getCameraOrbit());
       });
-      $$('.hotspot', card).forEach(function (h) {
+      var hs = $$('.hotspot', card);
+      hs.forEach(function (h) {
         h.addEventListener('click', function () { if (o.onPart) o.onPart(Number(h.getAttribute('data-part'))); });
       });
+      /* v1.0.2: los puntos no capturan el dedo (pointer-events: none), así girar y ampliar funcionan
+       * aunque el gesto empiece sobre un punto. Un toque corto a menos de 30 px de un punto visible lo activa. */
+      if (hs.length) {
+        var down = null, multi = false;
+        mv.addEventListener('pointerdown', function (e) {
+          if (down) { multi = true; return; }
+          down = { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId }; multi = false;
+        });
+        var up = function (e) {
+          if (!down || e.pointerId !== down.id) return;
+          var d = down; down = null;
+          if (e.type !== 'pointerup' || multi || Math.abs(e.clientX - d.x) > 10 || Math.abs(e.clientY - d.y) > 10 || Date.now() - d.t > 600) return;
+          var best = null, bd = 30;
+          hs.forEach(function (h) {
+            if (!h.hasAttribute('data-visible')) return;
+            var r = h.getBoundingClientRect(), dist = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
+            if (dist < bd) { bd = dist; best = h; }
+          });
+          if (best) best.click();
+        };
+        mv.addEventListener('pointerup', up);
+        mv.addEventListener('pointercancel', up);
+      }
       mv.addEventListener('error', function () {
         if (window.ORBITA_MODEL_FALLBACK && !mv.getAttribute('data-retry')) { mv.setAttribute('data-retry', '1'); mv.src = window.ORBITA_MODEL_FALLBACK(it.id); return; }
         swapToPhotos(card, it, o);
@@ -410,6 +451,18 @@
       if (onAlt) onAlt(k);
     };
     range.addEventListener('input', function () { set(Number(range.value)); });
+    /* v1.0.2: si las fotos no están guardadas y no hay señal, se explica qué hacer en lugar de mostrar una imagen rota */
+    var avisar = function () {
+      if (box.getAttribute('data-aviso')) return;
+      box.setAttribute('data-aviso', '1');
+      var it = inst(box.getAttribute('data-alt')), sinRed = navigator.onLine === false;
+      box.innerHTML = '<div class="offline-note" role="status">' + icon(sinRed ? 'wifiOff' : 'cloud') +
+        '<strong>' + (sinRed ? 'Este instrumento aún no está guardado en tu celular' : 'No se pudieron cargar las imágenes') + '</strong>' +
+        '<p>' + (sinRed ? 'Cuando tengas señal, ábrelo una vez o descarga el módulo ' + it.modulo + ' en Ayuda. Mientras tanto, lee su ficha aquí abajo.' : 'Revisa tu conexión y vuelve a abrir la ficha.') + '</p>' +
+        (sinRed ? '<a class="btn outline" href="#/ayuda">' + icon('download') + 'Ir a descargas</a>' : '') + '</div>';
+    };
+    img.addEventListener('error', avisar);
+    if (img.complete && img.naturalWidth === 0) avisar();
     var sx = null;
     box.addEventListener('pointerdown', function (e) { if (e.target === range) return; sx = e.clientX; });
     box.addEventListener('pointerup', function (e) {
@@ -473,6 +526,7 @@
     var t = $('#toast'); if (t) t.hidden = true;
     if (cleanup) { try { cleanup(); } catch (e) { /* */ } cleanup = null; }
     var p = path(), v = null;
+    if (p !== '/' && p !== '' && use3D()) setTimeout(ensureModelViewer, 0);
     for (var i = 0; i < ROUTES.length; i++) {
       var m = p.match(ROUTES[i][0]);
       if (m) { v = ROUTES[i][1].apply(null, m.slice(1)); break; }
@@ -999,7 +1053,7 @@
       html:
         '<div class="goal">' + icon('bulb') + '<p>Abre la ficha de cada instrumento, gíralo, amplíalo y toca los puntos numerados. Después revisa sus pestañas.</p></div>' +
         '<section class="card stack"><h2 class="h3">En tu cuaderno</h2><p class="lead">Para cada instrumento, anota su nombre y dos características que hayas observado en el modelo. Ese registro te servirá para estudiar sin pantalla.</p>' +
-        '<div class="table-wrap"><table class="cuadro"><thead><tr><th>Instrumento</th><th>Característica 1</th><th>Característica 2</th></tr></thead><tbody>' +
+        '<div class="table-wrap" tabindex="0" role="region" aria-label="Tabla: desliza para ver todas las columnas"><table class="cuadro"><thead><tr><th>Instrumento</th><th>Característica 1</th><th>Característica 2</th></tr></thead><tbody>' +
         '<tr><td>Ejemplo: Probeta graduada</td><td>Tiene escala en mL</td><td>Tiene base ancha</td></tr>' +
         '<tr><td class="blank">…</td><td class="blank">…</td><td class="blank">…</td></tr></tbody></table></div></section>' +
         '<a class="item" href="#/laboratorio"><span class="thumb c-teal">' + icon('flask') + '</span><span><strong>Módulo 1 · Recorrido libre</strong><small>Recorre el Laboratorio 3D y filtra por función o por material</small></span><span class="state viewing">Ir</span></a>' +
@@ -1120,7 +1174,7 @@
       el.innerHTML =
         '<div class="goal">' + icon('bulb') + '<p>Toca un instrumento y luego la bandeja a la que pertenece.</p></div>' +
         '<div class="trays' + (C.bandejas.length > 2 ? ' many' : '') + '">' + C.bandejas.map(function (b) {
-          return '<button class="tray' + (st.sel ? ' armed' : '') + '" data-tray="' + b.id + '" aria-label="Bandeja: ' + esc(b.nombre) + '"><h3>' + icon(b.icono) + esc(b.nombre) + '<span class="cnt">' + st.placed[b.id].length + '</span></h3><span class="placed">' +
+          return '<button class="tray' + (st.sel ? ' armed' : '') + '" data-tray="' + b.id + '"><h3>' + icon(b.icono) + '<span class="sr-only">Bandeja: </span>' + esc(b.nombre) + '<span class="cnt">' + st.placed[b.id].length + '</span></h3><span class="placed">' +
             st.placed[b.id].map(function (id) { var it = inst(id); return '<span class="placed-item"><img src="' + it.imagen + '" alt="">' + esc(it.nombre) + icon('checkCircle') + '</span>'; }).join('') +
             '</span>' + (placedN < total ? '<span class="drop-hint">' + (st.sel ? 'Toca aquí para ubicar' : 'Bandeja') + '</span>' : '') + '</button>';
         }).join('') + '</div>' +
@@ -1178,7 +1232,7 @@
     if (!p) return null;
     var a = inst(p.a), b = inst(p.b), swapped = false, reveal = false;
     function cuadro() {
-      return '<div class="table-wrap"><table class="cuadro"><thead><tr><th></th><th>' + esc(a.nombre) + '</th><th>' + esc(b.nombre) + '</th></tr></thead><tbody>' +
+      return '<div class="table-wrap" tabindex="0" role="region" aria-label="Tabla: desliza para ver todas las columnas"><table class="cuadro"><thead><tr><th></th><th>' + esc(a.nombre) + '</th><th>' + esc(b.nombre) + '</th></tr></thead><tbody>' +
         p.cuadro.map(function (r) {
           if (r[0] === 'Se parecen en…') return '<tr><th>' + r[0] + '</th><td colspan="2" class="' + (reveal ? '' : 'blank') + '">' + (reveal ? esc(r[1]) : '…') + '</td></tr>';
           return '<tr><th>' + r[0] + '</th><td class="' + (reveal ? '' : 'blank') + '">' + (reveal ? esc(r[1]) : '…') + '</td><td class="' + (reveal ? '' : 'blank') + '">' + (reveal ? esc(r[2]) : '…') + '</td></tr>';
@@ -1328,7 +1382,7 @@
   }
 
   function rubricaHTML() {
-    return '<div class="table-wrap"><table class="cuadro rubrica"><thead><tr><th>Criterio</th><th>Superior</th><th>Alto</th><th>Básico</th><th>Bajo</th></tr></thead><tbody>' +
+    return '<div class="table-wrap" tabindex="0" role="region" aria-label="Tabla: desliza para ver todas las columnas"><table class="cuadro rubrica"><thead><tr><th>Criterio</th><th>Superior</th><th>Alto</th><th>Básico</th><th>Bajo</th></tr></thead><tbody>' +
       D.RUBRICA.map(function (r) { return '<tr><th>' + esc(r.criterio) + '</th><td>' + esc(r.superior) + '</td><td>' + esc(r.alto) + '</td><td>' + esc(r.basico) + '</td><td>' + esc(r.bajo) + '</td></tr>'; }).join('') +
       '</tbody></table></div>';
   }
@@ -1613,7 +1667,7 @@
       title: 'Guía para el docente', eyebrow: 'Orbita · Ciencias Naturales, grado noveno', back: '/recursos', navKey: 'inicio',
       html:
         '<p class="lead">Orbita acompaña la explicación del docente: los estudiantes exploran, practican y se evalúan en el celular, y la discusión se hace en la puesta en común al final de cada sesión.</p>' +
-        '<section class="card stack"><h2 class="h3">Secuencia sugerida (una sesión de 2 horas por semana)</h2><div class="table-wrap"><table class="cuadro"><thead><tr><th>Semana</th><th>Módulo</th><th>Actividades clave</th><th>Evaluación</th></tr></thead><tbody>' +
+        '<section class="card stack"><h2 class="h3">Secuencia sugerida (una sesión de 2 horas por semana)</h2><div class="table-wrap" tabindex="0" role="region" aria-label="Tabla: desliza para ver todas las columnas"><table class="cuadro"><thead><tr><th>Semana</th><th>Módulo</th><th>Actividades clave</th><th>Evaluación</th></tr></thead><tbody>' +
         semanas.map(function (s) { return '<tr><th>' + s[0] + '</th><td>' + esc(s[1]) + '</td><td>' + esc(s[2]) + '</td><td>' + esc(s[3]) + '</td></tr>'; }).join('') + '</tbody></table></div></section>' +
         '<section class="card stack"><h2 class="h3">Cómo recoger los resultados</h2><ul class="parts">' +
         '<li><span class="n">1</span><span>Orbita no usa cuentas: cada estudiante muestra la pantalla <b>Mis logros</b> o envía una captura por el medio que use el curso.</span></li>' +
@@ -1688,14 +1742,14 @@
         : '<div class="status-line"><span class="dot"></span>Esta versión se usa en línea. Instálala desde el sitio publicado para usarla sin conexión.</div>';
     box.innerHTML = core + '<div id="modStatus" class="stack" style="gap:8px"><div class="status-line"><span class="dot"></span>Revisando los módulos…</div></div>';
     if (!('caches' in window) || Offline.state === 'none') { $('#modStatus', box).remove(); return; }
-    var pesos = { 1: '≈ 0,9 MB', 2: '≈ 1,3 MB', 3: '≈ 1,4 MB', 4: '≈ 1,2 MB' };
+    var pesos = { 1: '≈ 0,9 MB', 2: '≈ 1,3 MB', 3: '≈ 1,3 MB', 4: '≈ 1,2 MB' }; // peso real de los archivos en la v1.0.2
     Promise.all(D.MODULOS.map(function (m) { return Offline.moduleStatus(m.id); })).then(function (sts) {
       var cont = $('#modStatus', box); if (!cont) return;
       var faltan = D.MODULOS.filter(function (m, k) { return sts[k] !== 'ok'; });
       cont.innerHTML = D.MODULOS.map(function (m, k) {
         if (sts[k] === 'ok') return '<div class="status-line ok"><span class="dot"></span>Módulo ' + m.id + ' descargado: funciona sin conexión.</div>';
         return '<div class="setting" style="border:0;padding:0"><span><strong>Módulo ' + m.id + ' · ' + esc(m.corto) + '</strong><small>' + (m.lecciones ? 'Lecciones, imágenes y ficha PDF' : 'Modelos, fotos y ficha PDF') + ' (' + pesos[m.id] + ')</small></span><button class="btn outline" data-dl="' + m.id + '">' + icon('download') + 'Descargar</button></div>';
-      }).join('') + (faltan.length > 1 ? '<button class="btn primary" id="dlAll">' + icon('download') + 'Descargar todo (≈ 4,6 MB)</button>' : '');
+      }).join('') + (faltan.length > 1 ? '<button class="btn primary" id="dlAll">' + icon('download') + 'Descargar todo (≈ 4,5 MB)</button>' : '');
       function bajar(ids, btn) {
         btn.disabled = true; btn.textContent = 'Descargando…';
         ids.reduce(function (pr, mid) { return pr.then(function () { return Offline.downloadModule(mid); }); }, Promise.resolve())
